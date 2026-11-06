@@ -124,12 +124,15 @@ h2, h3, [data-testid="stSubheader"] {{
 /* Refined inline code pills instead of harsh default grey boxes */
 code {{
     font-family: 'JetBrains Mono', monospace !important;
-    font-size: 0.78em !important;
+    font-size: 0.84em !important;
     background: var(--bg-subtle) !important;
-    color: var(--text-muted) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 5px !important;
-    padding: 1px 6px !important;
+    color: var(--text) !important;
+    border: none !important;
+    padding: 1px 4px !important;
+}}
+pre code {{
+    background: transparent !important;
+    padding: 0 !important;
 }}
 
 /* Brand banner */
@@ -408,31 +411,160 @@ button[data-baseweb="tab"][aria-selected="true"] {{
 .badge-amber {{ color: var(--amber); background: var(--amber-muted); }}
 .badge-blue {{ color: var(--blue); background: var(--blue-muted); }}
 
-/* Conversational Telemetry Assistant Panel */
-.chat-banner {{
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--accent);
-    border-radius: var(--radius);
-    padding: 1rem 1.25rem;
-    margin-top: 1.5rem;
-    margin-bottom: 0.75rem;
-    box-shadow: var(--shadow);
+/* Ask Aurora Top-Right Popover Drawer */
+div[data-testid="stPopover"] > button {{
+    background: var(--card) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 9px !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.84rem !important;
+    font-weight: 600 !important;
+    padding: 0.45rem 0.9rem !important;
+    box-shadow: var(--shadow) !important;
+    transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease !important;
+}}
+div[data-testid="stPopover"] > button:hover {{
+    border-color: var(--accent) !important;
+    background: var(--card-hover) !important;
+    transform: translateY(-1px);
+}}
+div[data-testid="stPopoverBody"] {{
+    width: min(540px, 94vw) !important;
+    min-width: min(540px, 94vw) !important;
+    max-width: 540px !important;
+    background: var(--card) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 14px !important;
+    padding: 1rem 1.1rem !important;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5) !important;
+}}
+
+/* Override default red focus border on chat input & buttons inside Ask Aurora */
+div[data-testid="stChatInput"],
+div[data-testid="stChatInput"] > div,
+div[data-testid="stChatInputContainer"] {{
+    background: var(--bg-subtle) !important;
+    border-color: var(--border) !important;
+    border-radius: 10px !important;
+    color: var(--text) !important;
+}}
+div[data-testid="stChatInput"]:focus-within,
+div[data-testid="stChatInput"] > div:focus-within,
+div[data-testid="stChatInputContainer"]:focus-within {{
+    border-color: var(--accent) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 1px var(--accent) !important;
+}}
+div[data-testid="stChatInput"] textarea {{
+    color: var(--text) !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.85rem !important;
+}}
+div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button {{
+    text-align: left !important;
+    justify-content: flex-start !important;
+    white-space: normal !important;
+    height: auto !important;
+    min-height: 2.25rem !important;
+    padding: 0.45rem 0.75rem !important;
+    font-size: 0.79rem !important;
+    line-height: 1.35 !important;
+    background: var(--bg-subtle) !important;
+    color: var(--text-muted) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+}}
+div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button:hover {{
+    color: var(--text) !important;
+    border-color: var(--accent) !important;
+    background: var(--card-hover) !important;
+}}
+.aurora-drawer-head {{
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-bottom: 0.65rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+}}
+.aurora-drawer-title {{
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text);
+}}
+.aurora-drawer-sub {{
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    margin-top: 2px;
 }}
 .chat-engine-pill {{
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.71rem;
+    font-size: 0.68rem;
     font-weight: 600;
     color: var(--blue);
     background: var(--blue-muted);
     border: 1px solid rgba(59, 130, 246, 0.25);
-    padding: 3px 10px;
+    padding: 2px 8px;
     border-radius: 999px;
+    white-space: nowrap;
+}}
+
+/* Sleek chat message cards — hide default cartoon avatars */
+[data-testid="stChatMessageAvatarUser"],
+[data-testid="stChatMessageAvatarAssistant"],
+[data-testid="stChatMessage"] > div:first-child:has(svg) {{
+    display: none !important;
+}}
+[data-testid="stChatMessage"] {{
+    background: var(--bg-subtle) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 11px !important;
+    padding: 0.9rem 1.05rem !important;
+    margin-bottom: 0.75rem !important;
+    font-size: 0.85rem !important;
+    line-height: 1.55 !important;
+}}
+.aurora-msg-role {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--blue);
+    margin-bottom: 0.3rem;
+}}
+.aurora-msg-role.user {{
+    color: var(--ut-orange);
+}}
+
+[data-testid="stChatMessage"] table {{
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 0.75rem 0 !important;
+}}
+
+[data-testid="stChatMessage"] th, [data-testid="stChatMessage"] td {{
+    border: 1px solid var(--border) !important;
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.82rem !important;
+}}
+
+[data-testid="stChatMessage"] th {{
+    background: var(--card) !important;
+    font-weight: 600 !important;
+}}
+
+.aurora-msg-meta {{
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
 }}
 
 [data-testid="stHorizontalBlock"] {{

@@ -207,100 +207,120 @@ def _render_telemetry_chat(
     rb_df: pd.DataFrame,
     cov_df: pd.DataFrame,
 ) -> None:
-    """Render the Gemini Data Analytics conversational assistant scoped to the active campaign."""
-    st.markdown(
-        """
-        <div class="chat-banner">
-            <div>
-                <div style="font-size:0.98rem;font-weight:700;color:var(--text);">
-                    ✦ Ask Your Telemetry — Conversational Analytics Assistant
-                </div>
-                <div style="font-size:0.8rem;color:var(--text-muted);margin-top:2px;">
-                    Query campaign runs, OKF steering directives, failure modes, and transport flux coverage in natural language.
-                </div>
-            </div>
-            <span class="chat-engine-pill">Gemini Data Analytics · Read-Only Views</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+    """Render the top-right '✦ Ask Aurora' dropdown chat drawer with scrollable history."""
     state_key = "aurora_chat_messages"
     pending_key = "aurora_chat_pending_prompt"
     if state_key not in st.session_state:
         st.session_state[state_key] = []
 
-    messages: list[dict[str, object]] = st.session_state[state_key]
+    with st.popover("✦ Ask Aurora", width="stretch"):
 
-    # Starter suggestion chips when conversation is empty
-    starter_prompts = default_suggestions(campaign_id)
-    chip_cols = st.columns(len(starter_prompts))
-    for idx, prompt_text in enumerate(starter_prompts):
-        with chip_cols[idx]:
-            if st.button(
-                prompt_text,
-                key=f"chat_starter_{idx}",
-                width="stretch",
-            ):
-                st.session_state[pending_key] = prompt_text
+        @st.fragment
+        def _chat_drawer() -> None:
+            messages: list[dict[str, object]] = st.session_state[state_key]
 
-    user_prompt = st.chat_input(
-        f"Ask a question about campaign '{campaign_id}' telemetry...",
-        key="telemetry_chat_input",
-    )
-    active_prompt = user_prompt or st.session_state.pop(pending_key, None)
+            top_l, top_r = st.columns([7.8, 2.2])
+            with top_l:
+                st.markdown(
+                    f"""
+                    <div class="aurora-drawer-title">
+                        <span>✦ Ask Aurora</span>
+                        <span class="chat-engine-pill">{html.escape(campaign_id)}</span>
+                    </div>
+                    <div class="aurora-drawer-sub">
+                        Conversational telemetry assistant · Read-only views
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with top_r:
+                if messages and st.button("Clear", key="clear_aurora_chat_btn", width="stretch"):
+                    st.session_state[state_key] = []
+                    messages = st.session_state[state_key]
 
-    if active_prompt:
-        messages.append({"role": "user", "content": str(active_prompt)})
-        turn = ask_telemetry(
-            question=str(active_prompt),
-            campaign_id=campaign_id,
-            messages=messages,
-            project_id=getattr(client, "project", None),
-            dataset_id=getattr(client, "dataset", None),
-            data_mode=getattr(client, "data_mode", "bigquery"),
-            kpis_df=kpis_df,
-            runs_df=runs_df,
-            tax_df=tax_df,
-            rb_df=rb_df,
-            cov_df=cov_df,
-        )
-        messages.append(
-            {
-                "role": "assistant",
-                "content": turn.answer,
-                "thoughts": turn.thoughts,
-                "suggestions": turn.suggestions,
-                "engine": turn.engine,
-            }
-        )
+            history_box = st.container(height=380, border=False)
+            user_prompt = st.chat_input(
+                f"Ask Aurora about {campaign_id}...",
+                key="telemetry_chat_input",
+            )
+            active_prompt = user_prompt or st.session_state.pop(pending_key, None)
 
-    for msg_idx, msg in enumerate(messages):
-        role = str(msg.get("role", "assistant"))
-        with st.chat_message(role):
-            thoughts = msg.get("thoughts")
-            if role == "assistant" and isinstance(thoughts, list) and thoughts:
-                with st.expander("Agent Reasoning & View Context", expanded=False):
-                    for step in thoughts:
-                        st.markdown(f"- {step}")
-            st.markdown(str(msg.get("content", "")))
-            suggestions = msg.get("suggestions")
-            if (
-                role == "assistant"
-                and msg_idx == len(messages) - 1
-                and isinstance(suggestions, list)
-                and suggestions
-            ):
-                s_cols = st.columns(len(suggestions))
-                for s_idx, sug in enumerate(suggestions):
-                    with s_cols[s_idx]:
+            if active_prompt:
+                messages.append({"role": "user", "content": str(active_prompt)})
+                turn = ask_telemetry(
+                    question=str(active_prompt),
+                    campaign_id=campaign_id,
+                    messages=messages,
+                    project_id=getattr(client, "project", None),
+                    dataset_id=getattr(client, "dataset", None),
+                    data_mode=getattr(client, "data_mode", "bigquery"),
+                    kpis_df=kpis_df,
+                    runs_df=runs_df,
+                    tax_df=tax_df,
+                    rb_df=rb_df,
+                    cov_df=cov_df,
+                )
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": turn.answer,
+                        "thoughts": turn.thoughts,
+                        "suggestions": turn.suggestions,
+                        "engine": turn.engine,
+                    }
+                )
+
+            with history_box:
+                if not messages:
+                    st.markdown(
+                        f'<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.5rem;">'
+                        f"Select a prompt below or type a question about <code>{html.escape(campaign_id)}</code> "
+                        f"runs, OKF steering directives, failure modes, or GPU savings:"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    for idx, prompt_text in enumerate(default_suggestions(campaign_id)):
                         if st.button(
-                            f"↳ {sug}",
-                            key=f"chat_followup_{msg_idx}_{s_idx}",
+                            f"✦ {prompt_text}",
+                            key=f"chat_starter_{idx}",
                             width="stretch",
                         ):
-                            st.session_state[pending_key] = str(sug)
-                            st.rerun()
+                            st.session_state[pending_key] = prompt_text
+                            st.rerun(scope="fragment")
+
+                for msg_idx, msg in enumerate(messages):
+                    role = str(msg.get("role", "assistant"))
+                    with st.chat_message(role):
+                        role_badge = (
+                            '<div class="aurora-msg-role">✦ AURORA</div>'
+                            if role == "assistant"
+                            else '<div class="aurora-msg-role user">YOU</div>'
+                        )
+                        st.markdown(role_badge, unsafe_allow_html=True)
+                        st.markdown(str(msg.get("content", "")))
+                        engine = msg.get("engine")
+                        if role == "assistant" and engine:
+                            st.markdown(
+                                f'<div class="aurora-msg-meta">✦ {html.escape(str(engine))}</div>',
+                                unsafe_allow_html=True,
+                            )
+                        suggestions = msg.get("suggestions")
+                        if (
+                            role == "assistant"
+                            and msg_idx == len(messages) - 1
+                            and isinstance(suggestions, list)
+                            and suggestions
+                        ):
+                            for s_idx, sug in enumerate(suggestions):
+                                if st.button(
+                                    f"↳ {sug}",
+                                    key=f"chat_followup_{msg_idx}_{s_idx}",
+                                    width="stretch",
+                                ):
+                                    st.session_state[pending_key] = str(sug)
+                                    st.rerun(scope="fragment")
+
+        _chat_drawer()
 
 
 def _kpi_card(column, badge: str, label: str, value: str) -> None:
@@ -331,7 +351,7 @@ def main(client: DashboardDataClient | None = None) -> None:
         unsafe_allow_html=True,
     )
 
-    head_left, head_right = st.columns([8.5, 1.5])
+    head_left, head_chat, head_right = st.columns([7.1, 1.7, 1.2])
     with head_left:
         st.title("UT Austin × Google.org — KR2 Automated Gyrokinetic Database (`sim-babysitter`)")
     with head_right:
@@ -394,10 +414,12 @@ def main(client: DashboardDataClient | None = None) -> None:
         st.info(NO_TELEMETRY_MESSAGE)
         return
 
+    if "campaign_id" not in st.session_state:
+        st.session_state["campaign_id"] = campaigns[default_campaign_index(campaigns, runs_df)]
+
     campaign = st.selectbox(
         "Campaign",
         campaigns,
-        index=default_campaign_index(campaigns, runs_df),
         key="campaign_id",
     )
     kpis_df = for_campaign(kpis_df, str(campaign))
@@ -576,15 +598,16 @@ def main(client: DashboardDataClient | None = None) -> None:
         st.subheader(f"Physicist Escalation Queue (`needs_human/` — {len(esc_df)} runs)")
         st.dataframe(esc_df, width="stretch", hide_index=True)
 
-    _render_telemetry_chat(
-        client=client,
-        campaign_id=str(campaign),
-        kpis_df=kpis_df,
-        runs_df=runs_df,
-        tax_df=tax_df,
-        rb_df=rb_df,
-        cov_df=cov_df,
-    )
+    with head_chat:
+        _render_telemetry_chat(
+            client=client,
+            campaign_id=str(campaign),
+            kpis_df=kpis_df,
+            runs_df=runs_df,
+            tax_df=tax_df,
+            rb_df=rb_df,
+            cov_df=cov_df,
+        )
 
 
 if __name__ == "__main__":
