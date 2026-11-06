@@ -401,3 +401,28 @@ def test_conversational_telemetry_chat_answers_questions():
     assistant_md = " ".join(m.value for m in at.chat_message[1].markdown)
     assert "b-3" in assistant_md
     assert "STALL" in assistant_md
+
+
+def test_adk_chat_reports_all_campaigns_across_project():
+    client = FakeDashboardClient(populated_views())
+    at = run_app(client)
+    at.chat_input[0].set_value("How many campaigns do I have?").run()
+    assert not at.exception
+    assistant_md = " ".join(m.value for m in at.chat_message[-1].markdown)
+    assert "2 campaign(s)" in assistant_md
+    assert "camp-a" in assistant_md
+    assert "camp-b" in assistant_md
+    assert "ADK" not in assistant_md
+
+
+def test_chat_greeting_is_conversational_and_omits_adk_jargon():
+    client = FakeDashboardClient(populated_views())
+    at = run_app(client)
+    at.chat_input[0].set_value("hello").run()
+    assert not at.exception
+    assistant_md = " ".join(m.value for m in at.chat_message[-1].markdown)
+    assert "Hello! I'm **Aurora**" in assistant_md
+    assert "camp-a" in assistant_md
+    assert "camp-b" in assistant_md
+    assert "Campaign Telemetry Summary" not in assistant_md
+    assert "ADK" not in assistant_md

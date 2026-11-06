@@ -440,8 +440,9 @@ cmd_plan_or_apply() {
   steer_img="${AURORA_STEER_IMAGE:-$(current_service_image "${STEER_SERVICE}")}"
   dash_img="${DASHBOARD_IMAGE:-$(current_service_image "${DASHBOARD_SERVICE}")}"
   gx_img="${GX_CONTAINER_IMAGE:-$(current_job_image)}"
-  [ -n "${steer_img}" ] && [ -n "${dash_img}" ] ||
+  if [ -z "${steer_img}" ] || [ -z "${dash_img}" ]; then
     die "Cloud Run services not found; run 'make gcp-deploy' once to build images and create them"
+  fi
   tf_args "${steer_img}" "${dash_img}" "${gx_img}"
   if [ "${action}" = "plan" ]; then
     run_terraform plan -input=false "${TF_ARGS[@]}"
@@ -532,7 +533,9 @@ cmd_deploy() {
   worker_sa="$(run_terraform output -raw gcp_batch_worker_service_account)"
   vpc_net="$(run_terraform output -raw vpc_network)"
   vpc_subnet="$(run_terraform output -raw vpc_subnetwork)"
-  [ -n "${vpc_net}" ] && [ -n "${vpc_subnet}" ] || die "Terraform outputs vpc_network / vpc_subnetwork are empty"
+  if [ -z "${vpc_net}" ] || [ -z "${vpc_subnet}" ]; then
+    die "Terraform outputs vpc_network / vpc_subnetwork are empty"
+  fi
   update_env_file "${steer_url}" "${bucket}"
 
   log "[7/7] Uploading babysitter config to gs://${bucket}/config/batch_babysitter.json"

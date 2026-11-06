@@ -197,6 +197,23 @@ def _render_runs_html_table(runs_df: pd.DataFrame) -> None:
     )
 
 
+def _render_chat_turn(msg: dict[str, object]) -> None:
+    """Render one compact, cohesive chat message card without vertical clutter."""
+    role = str(msg.get("role", "assistant"))
+    content = str(msg.get("content", ""))
+    with st.chat_message(role):
+        if role == "assistant":
+            st.markdown(
+                f'<div class="aurora-msg-role"><span>✦ AURORA</span></div>\n\n{content}',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'<div class="aurora-msg-role user"><span>YOU</span></div>\n\n{html.escape(content)}',
+                unsafe_allow_html=True,
+            )
+
+
 def _render_telemetry_chat(
     *,
     client: DashboardDataClient,
@@ -206,8 +223,13 @@ def _render_telemetry_chat(
     tax_df: pd.DataFrame,
     rb_df: pd.DataFrame,
     cov_df: pd.DataFrame,
+    all_kpis_df: pd.DataFrame,
+    all_runs_df: pd.DataFrame,
+    all_tax_df: pd.DataFrame,
+    all_rb_df: pd.DataFrame,
+    all_cov_df: pd.DataFrame,
 ) -> None:
-    """Render the top-right '✦ Ask Aurora' dropdown chat drawer with scrollable history."""
+    """Render the top-right '✦ Ask Aurora' copilot drawer with instant Thinking feedback."""
     state_key = "aurora_chat_messages"
     pending_key = "aurora_chat_pending_prompt"
     if state_key not in st.session_state:
@@ -228,7 +250,7 @@ def _render_telemetry_chat(
                         <span class="chat-engine-pill">{html.escape(campaign_id)}</span>
                     </div>
                     <div class="aurora-drawer-sub">
-                        Conversational telemetry assistant · Read-only views
+                        Simulation &amp; telemetry assistant
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -238,44 +260,19 @@ def _render_telemetry_chat(
                     st.session_state[state_key] = []
                     messages = st.session_state[state_key]
 
-            history_box = st.container(height=380, border=False)
+            history_box = st.container(height=400, border=False)
             user_prompt = st.chat_input(
-                f"Ask Aurora about {campaign_id}...",
+                "Ask Aurora about campaigns, runs, OKF directives, or flux...",
                 key="telemetry_chat_input",
             )
             active_prompt = user_prompt or st.session_state.pop(pending_key, None)
 
-            if active_prompt:
-                messages.append({"role": "user", "content": str(active_prompt)})
-                turn = ask_telemetry(
-                    question=str(active_prompt),
-                    campaign_id=campaign_id,
-                    messages=messages,
-                    project_id=getattr(client, "project", None),
-                    dataset_id=getattr(client, "dataset", None),
-                    data_mode=getattr(client, "data_mode", "bigquery"),
-                    kpis_df=kpis_df,
-                    runs_df=runs_df,
-                    tax_df=tax_df,
-                    rb_df=rb_df,
-                    cov_df=cov_df,
-                )
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": turn.answer,
-                        "thoughts": turn.thoughts,
-                        "suggestions": turn.suggestions,
-                        "engine": turn.engine,
-                    }
-                )
-
             with history_box:
-                if not messages:
+                if not messages and not active_prompt:
                     st.markdown(
                         f'<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.5rem;">'
-                        f"Select a prompt below or type a question about <code>{html.escape(campaign_id)}</code> "
-                        f"runs, OKF steering directives, failure modes, or GPU savings:"
+                        f"Ask anything across your campaigns or active campaign "
+                        f"<strong>{html.escape(campaign_id)}</strong>:"
                         f"</div>",
                         unsafe_allow_html=True,
                     )
@@ -288,37 +285,61 @@ def _render_telemetry_chat(
                             st.session_state[pending_key] = prompt_text
                             st.rerun(scope="fragment")
 
-                for msg_idx, msg in enumerate(messages):
-                    role = str(msg.get("role", "assistant"))
-                    with st.chat_message(role):
-                        role_badge = (
-                            '<div class="aurora-msg-role">✦ AURORA</div>'
-                            if role == "assistant"
-                            else '<div class="aurora-msg-role user">YOU</div>'
-                        )
-                        st.markdown(role_badge, unsafe_allow_html=True)
-                        st.markdown(str(msg.get("content", "")))
-                        engine = msg.get("engine")
-                        if role == "assistant" and engine:
-                            st.markdown(
-                                f'<div class="aurora-msg-meta">✦ {html.escape(str(engine))}</div>',
+                for msg in messages:
+                    _render_chat_turn(msg)
+
+                if active_prompt:
+                    user_msg: dict[str, object] = {"role": "user", "content": str(active_prompt)}
+                    messages.append(user_msg)
+                    _render_chat_turn(user_msg)
+
+                    with st.chat_message("assistant"):
+                        reply_slot = st.empty()
+
+                        def _show_thinking(status_text: str = "Thinking...") -> None:
+                            reply_slot.markdown(
+                                '<div class="aurora-msg-role"><span>✦ AURORA</span></div>'
+                                '<div class="aurora-thinking">'
+                                '<span class="aurora-thinking-dots"><span></span><span></span><span></span></span>'
+                                f"<span>{html.escape(status_text)}</span>"
+                                "</div>",
                                 unsafe_allow_html=True,
                             )
-                        suggestions = msg.get("suggestions")
-                        if (
-                            role == "assistant"
-                            and msg_idx == len(messages) - 1
-                            and isinstance(suggestions, list)
-                            and suggestions
-                        ):
-                            for s_idx, sug in enumerate(suggestions):
-                                if st.button(
-                                    f"↳ {sug}",
-                                    key=f"chat_followup_{msg_idx}_{s_idx}",
-                                    width="stretch",
-                                ):
-                                    st.session_state[pending_key] = str(sug)
-                                    st.rerun(scope="fragment")
+
+                        _show_thinking("Thinking...")
+                        turn = ask_telemetry(
+                            question=str(active_prompt),
+                            campaign_id=campaign_id,
+                            messages=messages,
+                            project_id=getattr(client, "project", None),
+                            dataset_id=getattr(client, "dataset", None),
+                            data_mode=getattr(client, "data_mode", "bigquery"),
+                            kpis_df=kpis_df,
+                            runs_df=runs_df,
+                            tax_df=tax_df,
+                            rb_df=rb_df,
+                            cov_df=cov_df,
+                            client=client,
+                            all_kpis_df=all_kpis_df,
+                            all_runs_df=all_runs_df,
+                            all_tax_df=all_tax_df,
+                            all_rb_df=all_rb_df,
+                            all_cov_df=all_cov_df,
+                            on_status=_show_thinking,
+                        )
+                        reply_slot.markdown(
+                            f'<div class="aurora-msg-role"><span>✦ AURORA</span></div>\n\n{turn.answer}',
+                            unsafe_allow_html=True,
+                        )
+
+                    asst_msg: dict[str, object] = {
+                        "role": "assistant",
+                        "content": turn.answer,
+                        "thoughts": turn.thoughts,
+                        "suggestions": turn.suggestions,
+                        "engine": turn.engine,
+                    }
+                    messages.append(asst_msg)
 
         _chat_drawer()
 
@@ -422,6 +443,12 @@ def main(client: DashboardDataClient | None = None) -> None:
         campaigns,
         key="campaign_id",
     )
+    all_kpis_df = kpis_df
+    all_runs_df = runs_df
+    all_tax_df = tax_df
+    all_rb_df = rb_df
+    all_cov_df = cov_df
+
     kpis_df = for_campaign(kpis_df, str(campaign))
     if kpis_df.empty:
         st.info(NO_TELEMETRY_MESSAGE)
@@ -607,6 +634,11 @@ def main(client: DashboardDataClient | None = None) -> None:
             tax_df=tax_df,
             rb_df=rb_df,
             cov_df=cov_df,
+            all_kpis_df=all_kpis_df,
+            all_runs_df=all_runs_df,
+            all_tax_df=all_tax_df,
+            all_rb_df=all_rb_df,
+            all_cov_df=all_cov_df,
         )
 
 

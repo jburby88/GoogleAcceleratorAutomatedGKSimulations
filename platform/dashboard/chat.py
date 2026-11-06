@@ -1,38 +1,29 @@
-"""Gemini Data Analytics conversational assistant for KR2 campaign telemetry."""
+"""Agent runner and fallback orchestrator for Ask Aurora (`platform/dashboard`)."""
 
 from __future__ import annotations
 
-import json
+import asyncio
+import concurrent.futures
 import logging
 import os
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 import pandas as pd
 
+from agent import (
+    FALLBACK_CHAT_MODEL_ID,
+    configure_vertex_env,
+    create_telemetry_analyst_agent,
+    resolve_chat_model_id,
+)
+from prompts import STARTER_SUGGESTIONS
+from tools import TelemetryToolkit, _filter_campaign
+
 LOGGER = logging.getLogger("aurora_dashboard.chat")
-
-CHAT_VIEWS = (
-    "v_kpis_campaign",
-    "v_run_status",
-    "v_failure_taxonomy",
-    "v_runbook_effectiveness",
-    "v_param_coverage",
-)
-
-SYSTEM_INSTRUCTION = (
-    "You are the UT Austin × Google.org KR2 Gyrokinetic Simulation Telemetry Analyst "
-    "(`aurora-steer` / `sim-babysitter`). Answer questions concisely using exact numbers, "
-    "run_ids, solvers (GX, GENE), execution backends (tacc_slurm, gcp_batch), failure modes "
-    "(TIMESTEP_COLLAPSE, SPECTRAL_PILEUP, DIVERGENCE, STALL, CRASH), and OKF runbook concepts "
-    "from the production telemetry views (`environment = 'prod'`, `is_synthetic = FALSE`). "
-    "Distinguish clearly between observed telemetry metrics and modelled compute/human savings.\n\n"
-    "CRITICAL FORMATTING RULES:\n"
-    "1. NEVER wrap every single value, status, solver, or number in backticks! Use bold (e.g., **w7x_ke_s064_001**) or clean Markdown tables.\n"
-    "2. NEVER use inline LaTeX ($Q_{{\\text{{es}}}}$). Use clean Unicode instead (e.g., Q_es, →, ≤).\n"
-    "3. NEVER put spaces inside *italics* that break Markdown parsing.\n"
-    "4. Provide answers in concise executive bullets or clean Markdown tables."
-)
+APP_NAME = "aurora_dashboard_chat"
 
 
 @dataclass
@@ -42,151 +33,223 @@ class ChatTurnResult:
     answer: str
     thoughts: list[str] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
-    engine: str = "gemini-data-analytics"
+    engine: str = "gemini-3.8-flash"
+    tools_called: list[str] = field(default_factory=list)
 
 
 def default_suggestions(campaign_id: str) -> list[str]:
-    """Return starter prompt chips scoped to the active campaign."""
-    return [
-        "Summarize KPIs & recovery rate",
-        "Which runs failed & how did OKF recover them?",
-        "Compare TACC Slurm vs GCP Cloud Batch",
-        "Why were runs escalated to needs_human/?",
-    ]
+    """Return concise starter prompt chips."""
+    del campaign_id
+    return list(STARTER_SUGGESTIONS)
 
 
-def _query_vertex_gemini(
+def _final_response_text(event: Any) -> str | None:
+    """Extract final response text from an agent event, ignoring internal thought parts."""
+    is_final = getattr(event, "is_final_response", None)
+    if not callable(is_final) or not is_final():
+        return None
+    content = getattr(event, "content", None)
+    parts = getattr(content, "parts", None) or []
+    texts = [p.text for p in parts if getattr(p, "text", None) and not getattr(p, "thought", False)]
+    return "".join(texts).strip() if texts else None
+
+
+def _format_history_prompt(messages: list[dict[str, Any]]) -> str:
+    """Combine prior conversation turns with the latest user question for agent execution."""
+    if not messages:
+        return ""
+    latest = str(messages[-1].get("content", "")).strip()
+    prior = messages[:-1][-6:]
+    if not prior:
+        return latest
+    history_lines = ["<conversation_history>"]
+    for msg in prior:
+        role = "User" if msg.get("role") == "user" else "Aurora"
+        content = str(msg.get("content", "")).strip()
+        if content:
+            history_lines.append(f"{role}: {content}")
+    history_lines.append("</conversation_history>\n")
+    history_lines.append(f"Current User Question: {latest}")
+    return "\n".join(history_lines)
+
+
+async def _run_adk_turn_async(
     *,
     project_id: str,
-    messages: list[dict[str, Any]],
     campaign_id: str,
-    kpis_df: pd.DataFrame,
-    runs_df: pd.DataFrame,
-    tax_df: pd.DataFrame,
-    rb_df: pd.DataFrame,
-    cov_df: pd.DataFrame,
-) -> ChatTurnResult | None:
-    """Stream a multi-turn chat using Vertex AI Gemini grounded on canonical views."""
+    messages: list[dict[str, Any]],
+    toolkit: TelemetryToolkit,
+    model_id: str,
+) -> str | None:
+    """Execute one `InMemoryRunner` turn with bound telemetry tools."""
+    from google.adk.runners import InMemoryRunner
+    from google.genai import types
+
+    configure_vertex_env(project_id)
+    agent = create_telemetry_analyst_agent(
+        tools=toolkit.as_adk_tools(),
+        active_campaign_id=campaign_id,
+        model=model_id,
+    )
+    runner = InMemoryRunner(agent=agent, app_name=APP_NAME)
+    session_service = runner.session_service
+    user_id = "dashboard_operator"
+    session_id = f"chat-{uuid.uuid4().hex}"
+
+    await session_service.create_session(app_name=APP_NAME, user_id=user_id, session_id=session_id)
+    prompt_text = _format_history_prompt(messages)
+    final_text: str | None = None
     try:
-        from google import genai
-        from google.genai import types
-    except ImportError:
-        LOGGER.warning("google-genai not installed, falling back.")
-        return None
-
-    try:
-        location = os.environ.get("GOOGLE_CLOUD_LOCATION", "").strip() or "global"
-        primary_model = os.environ.get("AURORA_CHAT_MODEL_ID", "").strip() or "gemini-3.8-flash"
-        fallback_model = "gemini-4-argon"
-        client = genai.Client(vertexai=True, project=project_id, location=location)
-
-        context_parts = [
-            f"Active Campaign: {campaign_id}\n",
-            "Here is the canonical telemetry view data:\n",
-            "v_kpis_campaign:\n" + kpis_df.to_csv(index=False),
-            "\nv_run_status:\n" + runs_df.to_csv(index=False),
-            "\nv_failure_taxonomy:\n" + tax_df.to_csv(index=False),
-            "\nv_runbook_effectiveness:\n" + rb_df.to_csv(index=False),
-            "\nv_param_coverage:\n" + cov_df.to_csv(index=False),
-        ]
-
-        full_system_instruction = SYSTEM_INSTRUCTION + "\n\n" + "".join(context_parts)
-
-        api_messages = []
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = str(msg.get("content", "")).strip()
-            if not content:
-                continue
-            api_messages.append(
-                types.Content(
-                    role="user" if role == "user" else "model",
-                    parts=[types.Part.from_text(text=content)],
-                )
-            )
-
-        config = types.GenerateContentConfig(
-            system_instruction=full_system_instruction,
-            temperature=0.0,
-            response_mime_type="application/json",
-            response_schema=types.Schema(
-                type="OBJECT",
-                properties={
-                    "answer": types.Schema(
-                        type="STRING",
-                        description="The formatted markdown answer. NO backtick spam, NO latex.",
-                    ),
-                    "thoughts": types.Schema(type="ARRAY", items=types.Schema(type="STRING")),
-                    "suggestions": types.Schema(type="ARRAY", items=types.Schema(type="STRING")),
-                },
-                required=["answer", "thoughts", "suggestions"],
-            ),
-        )
-
-        used_model = primary_model
+        async for event in runner.run_async(
+            user_id=user_id,
+            session_id=session_id,
+            new_message=types.Content(role="user", parts=[types.Part(text=prompt_text)]),
+        ):
+            text = _final_response_text(event)
+            if text:
+                final_text = text
+    finally:
         try:
-            response = client.models.generate_content(
-                model=primary_model,
-                contents=api_messages,
-                config=config,
+            await session_service.delete_session(
+                app_name=APP_NAME, user_id=user_id, session_id=session_id
             )
-        except Exception as e:
-            LOGGER.warning("%s failed (%s); falling back to %s.", primary_model, e, fallback_model)
-            used_model = fallback_model
-            response = client.models.generate_content(
-                model=fallback_model,
-                contents=api_messages,
-                config=config,
-            )
+        except Exception:  # noqa: BLE001
+            pass
+    return final_text
 
-        if not response.text:
-            return None
 
-        data = json.loads(response.text)
-
-        return ChatTurnResult(
-            answer=data.get("answer", ""),
-            thoughts=data.get("thoughts", [])[:2],
-            suggestions=data.get("suggestions", default_suggestions(campaign_id))[:3],
-            engine=f"Vertex AI · {used_model}",
-        )
-    except Exception as exc:
-        LOGGER.info("Vertex AI Gemini fallback triggered: %s", exc)
+def _run_adk_agent(
+    *,
+    project_id: str,
+    campaign_id: str,
+    messages: list[dict[str, Any]],
+    toolkit: TelemetryToolkit,
+) -> ChatTurnResult | None:
+    """Run the telemetry analyst agent on a dedicated event loop thread."""
+    if os.environ.get("AURORA_DISABLE_ADK_CHAT", "").strip() == "1":
         return None
+    primary_model = resolve_chat_model_id()
+    for model_id in (primary_model, FALLBACK_CHAT_MODEL_ID):
+        try:
+            coro = asyncio.wait_for(
+                _run_adk_turn_async(
+                    project_id=project_id,
+                    campaign_id=campaign_id,
+                    messages=messages,
+                    toolkit=toolkit,
+                    model_id=model_id,
+                ),
+                timeout=35.0,
+            )
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+
+            if running_loop is None:
+                answer_text = asyncio.run(coro)
+            else:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    answer_text = pool.submit(asyncio.run, coro).result(timeout=36.0)
+            if answer_text:
+                tools_list = list(toolkit.called_tools)
+                return ChatTurnResult(
+                    answer=answer_text,
+                    thoughts=[f"Checked telemetry tools: {', '.join(tools_list) or 'none'}"],
+                    suggestions=default_suggestions(campaign_id)[:3],
+                    engine=model_id,
+                    tools_called=tools_list,
+                )
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("Model %s failed (%s); trying next fallback.", model_id, exc)
+    return None
 
 
 def _grounded_telemetry_answer(
     *,
     question: str,
     campaign_id: str,
+    toolkit: TelemetryToolkit,
     kpis_df: pd.DataFrame,
     runs_df: pd.DataFrame,
     tax_df: pd.DataFrame,
     rb_df: pd.DataFrame,
     cov_df: pd.DataFrame,
-    messages: list[dict[str, Any]] = None,
+    messages: list[dict[str, Any]] | None = None,
 ) -> ChatTurnResult:
-    """Synthesize a deterministic, citation-backed answer from the canonical telemetry views."""
+    """Deterministic tool-backed answer when offline or in headless unit tests."""
+    del tax_df
     q = question.lower().strip()
-    thoughts = [
-        f"Scoped telemetry context to campaign_id = {campaign_id}.",
-        "Inspected canonical views.",
-    ]
-
+    q_words = set(q.replace("!", " ").replace("?", " ").replace(",", " ").split())
     messages_context = ""
     if messages and len(messages) > 1:
         prev_asst = [m for m in messages[:-1] if m.get("role") == "assistant"]
         if prev_asst:
             messages_context = str(prev_asst[-1].get("content", "")).lower()
+    q_context = f"{q} {messages_context}"
 
-    q_context = q + " " + messages_context
+    # 0. Conversational greetings / "what can you do"
+    if q_words.issubset({"hello", "hi", "hey", "greetings", "morning", "afternoon", "aurora"}) or (
+        any(g in q for g in ("what can you do", "who are you", "help me"))
+    ):
+        info = toolkit.list_campaigns()
+        camps = ", ".join(f"**{c}**" for c in info["campaigns"])
+        return ChatTurnResult(
+            answer=(
+                f"Hello! I'm **Aurora**, your simulation and telemetry assistant across "
+                f"**TACC Vista Slurm** and **GCP Cloud Batch**.\n\n"
+                f"You currently have **{info['total_campaigns']} campaign(s)** available "
+                f"({camps}), with **{campaign_id}** selected in your view. "
+                f"Feel free to ask about campaign KPIs, solver runs, automated recoveries, "
+                f"or why specific runs were escalated."
+            ),
+            thoughts=["Checked available campaigns."],
+            suggestions=default_suggestions(campaign_id)[:3],
+            engine="telemetry",
+            tools_called=list(toolkit.called_tools),
+        )
+
+    # 1. Cross-campaign / "how many campaigns" queries
+    if any(k in q for k in ("how many campaign", "list campaign", "all campaign", "campaigns")):
+        info = toolkit.list_campaigns()
+        camp_names = info["campaigns"]
+        rows = info["campaign_kpis"]
+        lines = [
+            f"You have **{info['total_campaigns']} campaign(s)** in the system:\n",
+            "| Campaign ID | Completed Runs | Hands-Free Rate | Recovery Rate | GPU Hours Saved |",
+            "|---|---|---|---|---|",
+        ]
+        for r in rows:
+            cid = r.get("campaign_id")
+            comp = int(float(r.get("completed_runs") or 0))
+            targ = int(float(r.get("target_runs") or 0))
+            hf = float(r.get("hands_free_rate") or 0.0) * 100.0
+            rec = (
+                "—"
+                if r.get("agent_recovery_rate") is None
+                else f"{float(r.get('agent_recovery_rate') or 0.0) * 100.0:.1f}%"
+            )
+            gpu = float(r.get("estimated_gpu_hours_saved") or 0.0)
+            active_tag = " *(active)*" if cid == campaign_id else ""
+            lines.append(
+                f"| **{cid}**{active_tag} | {comp} / {targ} | {hf:.1f}% | {rec} | {gpu:.1f} h |"
+            )
+        if not rows:
+            lines.append(f"| **{', '.join(camp_names)}** | — | — | — | — |")
+        return ChatTurnResult(
+            answer="\n".join(lines),
+            thoughts=["Called `list_campaigns` across all production rows."],
+            suggestions=default_suggestions(campaign_id)[:3],
+            engine="telemetry",
+            tools_called=list(toolkit.called_tools),
+        )
 
     if kpis_df.empty:
         return ChatTurnResult(
             answer=f"No telemetry rows are available yet for campaign **{campaign_id}**.",
-            thoughts=thoughts,
+            thoughts=[],
             suggestions=default_suggestions(campaign_id)[:3],
-            engine="Canonical View Telemetry Engine",
+            engine="telemetry",
         )
 
     kpi = kpis_df.iloc[0]
@@ -207,13 +270,12 @@ def _grounded_telemetry_answer(
         else float(kpi.get("llm_calls_per_failed_run") or 0.0)
     )
 
-    if any(
-        k in q_context
-        for k in ("escalat", "needs_human", "human", "div_005", "crash", "happen", "why")
-    ):
+    # 2. Escalation queries
+    if any(k in q_context for k in ("escalat", "needs_human", "human", "div_005", "crash", "why")):
         if any(k in q for k in ("escalat", "needs_human", "human", "div_005", "crash")) or (
             "escalat" in messages_context
         ):
+            toolkit.query_campaign_runs(campaign_id=campaign_id, status_filter="escalated")
             esc = (
                 runs_df[runs_df["current_status"] == "escalated"]
                 if "current_status" in runs_df.columns
@@ -227,33 +289,36 @@ def _grounded_telemetry_answer(
                     bullets.append(
                         f"- **{r.get('run_id')}** ({r.get('solver')} on {r.get('backend')}, "
                         f"geometry {r.get('geometry_id')}): failure mode **{r.get('last_failure_type') or 'UNKNOWN'}** "
-                        f"— reason: *{r.get('escalation_reason') or 'Physics review required'}* "
-                        f"({r.get('tacc_folder_path') or 'queue/needs_human/'})"
+                        f"— *{str(r.get('escalation_reason') or 'Physics review required').strip()}*"
                     )
                 answer = (
-                    f"### Physicist Escalation Queue ({campaign_id})\n\n"
+                    f"**Physicist Escalation Queue ({campaign_id})**\n\n"
                     f"Found **{len(esc)} run(s)** escalated to needs_human/:\n\n"
                     + "\n".join(bullets)
                     + "\n\nPer the OKF safety guardrails (runbook-divergence), macro-scale physical "
                     "instabilities or unrecoverable crashes bypass blind retries and generate an ISSUE.md "
                     "handoff for physicist inspection."
                 )
-            suggestions = [
-                "Which runs failed & how did OKF recover them?",
-                "Compare TACC Slurm vs GCP Cloud Batch",
-                "Summarize KPIs & recovery rate",
-            ]
             return ChatTurnResult(
                 answer=answer,
-                thoughts=thoughts,
-                suggestions=suggestions,
-                engine="Canonical View Telemetry Engine",
+                thoughts=["Called `query_campaign_runs(status_filter='escalated')`."],
+                suggestions=[
+                    "Which runs failed & how did OKF recover them?",
+                    "Compare TACC Slurm vs GCP Cloud Batch",
+                    "Summarize KPIs & recovery rate",
+                ],
+                engine="telemetry",
+                tools_called=list(toolkit.called_tools),
             )
 
+    # 3. Backend / Solver comparison
     if any(k in q for k in ("backend", "tacc", "gcp", "slurm", "batch", "compare", "solver")):
-        lines = [f"### Dual-Backend & Solver Breakdown ({campaign_id})\n"]
-        lines.append("| Backend | Solver | Status | Runs |")
-        lines.append("|---|---|---|---|")
+        toolkit.query_campaign_runs(campaign_id=campaign_id)
+        lines = [
+            f"**Dual-Backend & Solver Breakdown ({campaign_id})**\n",
+            "| Backend | Solver | Status | Runs |",
+            "|---|---|---|---|",
+        ]
         if not runs_df.empty and {"backend", "solver", "current_status"}.issubset(runs_df.columns):
             grouped = (
                 runs_df.groupby(["backend", "solver", "current_status"], dropna=False)
@@ -264,27 +329,30 @@ def _grounded_telemetry_answer(
                 lines.append(
                     f"| **{row['backend']}** | **{row['solver']}** | {row['current_status']} | **{int(row['runs'])}** |"
                 )
-        lines.append("\n")
         lines.append(
-            f"- **Zero-LLM Checkpoint / Preemption Continuations:** {walltime_cnt}\n"
+            f"\n- **Zero-LLM Checkpoint Continuations:** {walltime_cnt}\n"
             f"- **LLM Triage Calls per Failed Run:** {llm_ratio:.2f} (cap ≤ 1.0)"
         )
-        suggestions = [
-            "Why were runs escalated to needs_human/?",
-            "Which runs failed & how did OKF recover them?",
-            "What are the heat flux and grid coverage metrics?",
-        ]
         return ChatTurnResult(
             answer="\n".join(lines),
-            thoughts=thoughts,
-            suggestions=suggestions[:3],
-            engine="Canonical View Telemetry Engine",
+            thoughts=["Called `query_campaign_runs`."],
+            suggestions=[
+                "Why were runs escalated to needs_human/?",
+                "Which runs failed & how did OKF recover them?",
+                "How many campaigns do I have?",
+            ],
+            engine="telemetry",
+            tools_called=list(toolkit.called_tools),
         )
 
+    # 4. Flux / Grid coverage
     if any(k in q for k in ("flux", "grid", "nx", "coverage", "geometry", "w7x", "mrx")):
-        lines = [f"### Numerical Grid & Transport Flux Coverage ({campaign_id})\n"]
-        lines.append("| Run ID | Solver | Geometry | Status | nx | Q_es | Retries |")
-        lines.append("|---|---|---|---|---|---|---|")
+        toolkit.get_parameter_and_flux_coverage(campaign_id=campaign_id)
+        lines = [
+            f"**Numerical Grid & Transport Flux Coverage ({campaign_id})**\n",
+            "| Run ID | Solver | Geometry | Status | nx | Q_es | Retries |",
+            "|---|---|---|---|---|---|---|",
+        ]
         if not cov_df.empty:
             for _, r in cov_df.iterrows():
                 flux_val = r.get("heat_flux_es")
@@ -301,20 +369,15 @@ def _grounded_telemetry_answer(
                     f"| **{r.get('run_id')}** | {r.get('solver')} | {r.get('geometry_id')} | "
                     f"**{r.get('coverage_status')}** | {nx_str} | {flux_str} | {r.get('retry_count')} |"
                 )
-        else:
-            lines.append("No parameter coverage rows recorded yet for this campaign.")
-        suggestions = [
-            "Summarize KPIs & recovery rate",
-            "Which runs failed & how did OKF recover them?",
-            "Compare TACC Slurm vs GCP Cloud Batch",
-        ]
         return ChatTurnResult(
             answer="\n".join(lines),
-            thoughts=thoughts,
-            suggestions=suggestions[:3],
-            engine="Canonical View Telemetry Engine",
+            thoughts=["Called `get_parameter_and_flux_coverage`."],
+            suggestions=default_suggestions(campaign_id)[:3],
+            engine="telemetry",
+            tools_called=list(toolkit.called_tools),
         )
 
+    # 5. Failures & OKF runbooks
     if any(
         k in q
         for k in (
@@ -329,7 +392,8 @@ def _grounded_telemetry_answer(
             "stall",
         )
     ):
-        lines = [f"### Failure Taxonomy & OKF Steering Outcomes ({campaign_id})\n"]
+        toolkit.get_failure_and_runbook_outcomes(campaign_id=campaign_id)
+        lines = [f"**Failure Taxonomy & OKF Steering Outcomes ({campaign_id})**\n"]
         if not runs_df.empty and "last_failure_type" in runs_df.columns:
             failed_runs = runs_df[runs_df["last_failure_type"].notna()]
             if not failed_runs.empty:
@@ -340,10 +404,8 @@ def _grounded_telemetry_answer(
                         f"| **{r.get('run_id')}** | {r.get('solver')} | {r.get('backend')} | "
                         f"**{r.get('last_failure_type')}** | {r.get('current_status')} |"
                     )
-            else:
-                lines.append("- No failure events recorded in v_run_status for this campaign.")
         if not rb_df.empty and "okf_concept_id" in rb_df.columns:
-            lines.append("\n**OKF Runbooks Invoked (v_runbook_effectiveness):**")
+            lines.append("\n**OKF Runbooks Invoked:**")
             for _, r in rb_df.iterrows():
                 rec_rate = r.get("recovery_rate")
                 rec_str = (
@@ -352,52 +414,37 @@ def _grounded_telemetry_answer(
                     else ""
                 )
                 lines.append(
-                    f"- {r.get('okf_concept_id')} ({r.get('solver')}): "
+                    f"- **{r.get('okf_concept_id')}** ({r.get('solver')}): "
                     f"{int(float(r.get('directives_count') or 0))} directive(s){rec_str}"
                 )
-        suggestions = [
-            "Why were runs escalated to needs_human/?",
-            "What are the heat flux and grid coverage metrics?",
-            "Summarize KPIs & recovery rate",
-        ]
         return ChatTurnResult(
             answer="\n".join(lines),
-            thoughts=thoughts,
-            suggestions=suggestions[:3],
-            engine="Canonical View Telemetry Engine",
+            thoughts=["Called `get_failure_and_runbook_outcomes`."],
+            suggestions=[
+                "Why were runs escalated to needs_human/?",
+                "Compare TACC Slurm vs GCP Cloud Batch",
+                "Summarize KPIs & recovery rate",
+            ],
+            engine="telemetry",
+            tools_called=list(toolkit.called_tools),
         )
 
-    run_summaries = []
-    if not runs_df.empty and "run_id" in runs_df.columns:
-        for _, r in runs_df.head(8).iterrows():
-            fail_tag = (
-                f" (recovered from {r.get('last_failure_type')})"
-                if pd.notna(r.get("last_failure_type")) and r.get("current_status") == "completed"
-                else (
-                    f" ({r.get('last_failure_type')})"
-                    if pd.notna(r.get("last_failure_type"))
-                    else ""
-                )
-            )
-            run_summaries.append(
-                f"- **{r.get('run_id')}** ({r.get('solver')} · {r.get('backend')}): "
-                f"**{r.get('current_status')}**{fail_tag}"
-            )
-
+    # 6. Default Campaign Summary
+    toolkit.get_campaign_kpis(campaign_id=campaign_id)
     answer = (
-        f"### Campaign Telemetry Summary ({campaign_id})\n\n"
+        f"**Campaign Telemetry Summary ({campaign_id})**\n\n"
         f"- **Completed Runs (Observed):** {completed} / {target}\n"
         f"- **Hands-Free Rate (Observed):** {hands_free:.1f}%\n"
         f"- **Agent Recovery Rate (Observed):** {recovery:.1f}%\n"
-        f"- **Modelled GPU Hours Saved:** {gpu_saved:.1f} h (early termination + checkpoint recovery)\n"
-        f"- **Modelled Human Hours Avoided:** {human_saved:.1f} h\n\n"
-        + ("**Run Ledger:**\n" + "\n".join(run_summaries) if run_summaries else "")
+        f"- **Modelled GPU Hours Saved:** {gpu_saved:.1f} h\n"
+        f"- **Modelled Human Hours Avoided:** {human_saved:.1f} h"
     )
     return ChatTurnResult(
         answer=answer,
-        thoughts=thoughts,
+        thoughts=["Called `get_campaign_kpis`."],
         suggestions=default_suggestions(campaign_id)[1:4],
-        engine="Canonical View Telemetry Engine",
+        engine="telemetry",
+        tools_called=list(toolkit.called_tools),
     )
 
 
@@ -414,29 +461,51 @@ def ask_telemetry(
     tax_df: pd.DataFrame,
     rb_df: pd.DataFrame,
     cov_df: pd.DataFrame,
+    client: Any = None,
+    all_kpis_df: pd.DataFrame | None = None,
+    all_runs_df: pd.DataFrame | None = None,
+    all_tax_df: pd.DataFrame | None = None,
+    all_rb_df: pd.DataFrame | None = None,
+    all_cov_df: pd.DataFrame | None = None,
+    on_status: Callable[[str], None] | None = None,
 ) -> ChatTurnResult:
-    """Answer a natural-language telemetry question using Gemini Data Analytics with view fallback."""
+    """Answer a telemetry question using the Gemini agent + read-only tools with view fallback."""
+    del dataset_id
+    toolkit = TelemetryToolkit(
+        client=client,
+        active_campaign_id=campaign_id,
+        all_kpis_df=all_kpis_df if all_kpis_df is not None else kpis_df,
+        all_runs_df=all_runs_df if all_runs_df is not None else runs_df,
+        all_tax_df=all_tax_df if all_tax_df is not None else tax_df,
+        all_rb_df=all_rb_df if all_rb_df is not None else rb_df,
+        all_cov_df=all_cov_df if all_cov_df is not None else cov_df,
+        on_status=on_status,
+    )
+
     if data_mode == "bigquery" and project_id:
-        gda_result = _query_vertex_gemini(
+        adk_result = _run_adk_agent(
             project_id=project_id,
-            messages=messages,
             campaign_id=campaign_id,
-            kpis_df=kpis_df,
-            runs_df=runs_df,
-            tax_df=tax_df,
-            rb_df=rb_df,
-            cov_df=cov_df,
+            messages=messages,
+            toolkit=toolkit,
         )
-        if gda_result is not None:
-            return gda_result
+        if adk_result is not None:
+            return adk_result
+
+    scoped_kpis = _filter_campaign(kpis_df, campaign_id) if not kpis_df.empty else kpis_df
+    scoped_runs = _filter_campaign(runs_df, campaign_id) if not runs_df.empty else runs_df
+    scoped_tax = _filter_campaign(tax_df, campaign_id) if not tax_df.empty else tax_df
+    scoped_rb = _filter_campaign(rb_df, campaign_id) if not rb_df.empty else rb_df
+    scoped_cov = _filter_campaign(cov_df, campaign_id) if not cov_df.empty else cov_df
 
     return _grounded_telemetry_answer(
         question=question,
         campaign_id=campaign_id,
-        kpis_df=kpis_df,
-        runs_df=runs_df,
-        tax_df=tax_df,
-        rb_df=rb_df,
-        cov_df=cov_df,
+        toolkit=toolkit,
+        kpis_df=scoped_kpis,
+        runs_df=scoped_runs,
+        tax_df=scoped_tax,
+        rb_df=scoped_rb,
+        cov_df=scoped_cov,
         messages=messages,
     )

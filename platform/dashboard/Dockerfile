@@ -19,9 +19,13 @@ COPY platform/dashboard/pyproject.toml \
      platform/dashboard/README.md \
      platform/dashboard/db.py \
      platform/dashboard/theme.py \
+     platform/dashboard/prompts.py \
+     platform/dashboard/tools.py \
+     platform/dashboard/agent.py \
      platform/dashboard/chat.py \
      platform/dashboard/streamlit_app.py \
      /srv/dashboard/
+COPY platform/dashboard/.streamlit/config.toml /srv/dashboard/.streamlit/config.toml
 
 RUN pip install --no-cache-dir /srv/dashboard
 

@@ -411,8 +411,12 @@ button[data-baseweb="tab"][aria-selected="true"] {{
 .badge-amber {{ color: var(--amber); background: var(--amber-muted); }}
 .badge-blue {{ color: var(--blue); background: var(--blue-muted); }}
 
-/* Ask Aurora Top-Right Popover Drawer */
-div[data-testid="stPopover"] > button {{
+/* Ask Aurora Top-Right Popover Drawer — zero red focus outlines */
+div[data-testid="stPopover"] > button,
+div[data-testid="stPopover"] > button:focus,
+div[data-testid="stPopover"] > button:focus-visible,
+div[data-testid="stPopover"] > button:active,
+div[data-testid="stPopover"] > button[aria-expanded="true"] {{
     background: var(--card) !important;
     color: var(--text) !important;
     border: 1px solid var(--border) !important;
@@ -422,23 +426,25 @@ div[data-testid="stPopover"] > button {{
     font-weight: 600 !important;
     padding: 0.45rem 0.9rem !important;
     box-shadow: var(--shadow) !important;
-    transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease !important;
+    outline: none !important;
+    transition: border-color 0.15s ease, background-color 0.15s ease !important;
 }}
-div[data-testid="stPopover"] > button:hover {{
+div[data-testid="stPopover"] > button:hover,
+div[data-testid="stPopover"] > button[aria-expanded="true"] {{
     border-color: var(--accent) !important;
     background: var(--card-hover) !important;
-    transform: translateY(-1px);
+    color: var(--text) !important;
 }}
 div[data-testid="stPopoverBody"] {{
-    width: min(540px, 94vw) !important;
-    min-width: min(540px, 94vw) !important;
-    max-width: 540px !important;
+    width: min(560px, 94vw) !important;
+    min-width: min(520px, 92vw) !important;
+    max-width: 560px !important;
     background: var(--card) !important;
     color: var(--text) !important;
     border: 1px solid var(--border) !important;
     border-radius: 14px !important;
-    padding: 1rem 1.1rem !important;
-    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5) !important;
+    padding: 0.95rem 1.05rem !important;
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.6) !important;
 }}
 
 /* Override default red focus border on chat input & buttons inside Ask Aurora */
@@ -446,7 +452,7 @@ div[data-testid="stChatInput"],
 div[data-testid="stChatInput"] > div,
 div[data-testid="stChatInputContainer"] {{
     background: var(--bg-subtle) !important;
-    border-color: var(--border) !important;
+    border: 1px solid var(--border) !important;
     border-radius: 10px !important;
     color: var(--text) !important;
 }}
@@ -467,8 +473,8 @@ div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button {{
     justify-content: flex-start !important;
     white-space: normal !important;
     height: auto !important;
-    min-height: 2.25rem !important;
-    padding: 0.45rem 0.75rem !important;
+    min-height: 2.1rem !important;
+    padding: 0.4rem 0.75rem !important;
     font-size: 0.79rem !important;
     line-height: 1.35 !important;
     background: var(--bg-subtle) !important;
@@ -486,8 +492,8 @@ div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button:hover {{
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    padding-bottom: 0.65rem;
-    margin-bottom: 0.5rem;
+    padding-bottom: 0.55rem;
+    margin-bottom: 0.45rem;
     border-bottom: 1px solid var(--border);
 }}
 .aurora-drawer-title {{
@@ -499,13 +505,13 @@ div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button:hover {{
     color: var(--text);
 }}
 .aurora-drawer-sub {{
-    font-size: 0.74rem;
+    font-size: 0.73rem;
     color: var(--text-muted);
-    margin-top: 2px;
+    margin-top: 1px;
 }}
 .chat-engine-pill {{
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.68rem;
+    font-size: 0.67rem;
     font-weight: 600;
     color: var(--blue);
     background: var(--blue-muted);
@@ -515,7 +521,7 @@ div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button:hover {{
     white-space: nowrap;
 }}
 
-/* Sleek chat message cards — hide default cartoon avatars */
+/* Sleek chat message cards — hide default cartoon avatars & tighten vertical rhythm */
 [data-testid="stChatMessageAvatarUser"],
 [data-testid="stChatMessageAvatarAssistant"],
 [data-testid="stChatMessage"] > div:first-child:has(svg) {{
@@ -524,47 +530,90 @@ div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button:hover {{
 [data-testid="stChatMessage"] {{
     background: var(--bg-subtle) !important;
     border: 1px solid var(--border) !important;
-    border-radius: 11px !important;
-    padding: 0.9rem 1.05rem !important;
-    margin-bottom: 0.75rem !important;
-    font-size: 0.85rem !important;
-    line-height: 1.55 !important;
+    border-radius: 10px !important;
+    padding: 0.7rem 0.9rem !important;
+    margin-bottom: 0.55rem !important;
+    font-size: 0.84rem !important;
+    line-height: 1.5 !important;
+}}
+[data-testid="stChatMessage"] p {{
+    margin-bottom: 0.4rem !important;
+    font-size: 0.84rem !important;
+}}
+[data-testid="stChatMessage"] ul, [data-testid="stChatMessage"] ol {{
+    margin: 0.3rem 0 0.45rem 1.1rem !important;
+    padding-left: 0.2rem !important;
+}}
+[data-testid="stChatMessage"] li {{
+    margin-bottom: 0.2rem !important;
 }}
 .aurora-msg-role {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.68rem;
+    font-size: 0.66rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
     color: var(--blue);
-    margin-bottom: 0.3rem;
+    margin-bottom: 0.25rem;
 }}
 .aurora-msg-role.user {{
     color: var(--ut-orange);
 }}
+.aurora-msg-engine {{
+    font-weight: 500;
+    color: var(--text-dim);
+    font-size: 0.64rem;
+    letter-spacing: 0.01em;
+}}
+
+/* Animated Thinking indicator inside assistant bubble */
+@keyframes auroraPulse {{
+    0%, 80%, 100% {{ opacity: 0.25; transform: scale(0.85); }}
+    40% {{ opacity: 1; transform: scale(1.1); }}
+}}
+.aurora-thinking {{
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.2rem 0;
+    color: var(--text-muted);
+    font-size: 0.83rem;
+    font-weight: 500;
+}}
+.aurora-thinking-dots {{
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}}
+.aurora-thinking-dots span {{
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--blue);
+    display: inline-block;
+    animation: auroraPulse 1.3s infinite ease-in-out both;
+}}
+.aurora-thinking-dots span:nth-child(1) {{ animation-delay: -0.26s; }}
+.aurora-thinking-dots span:nth-child(2) {{ animation-delay: -0.13s; }}
+.aurora-thinking-dots span:nth-child(3) {{ animation-delay: 0s; }}
 
 [data-testid="stChatMessage"] table {{
     width: 100% !important;
     border-collapse: collapse !important;
-    margin: 0.75rem 0 !important;
+    margin: 0.45rem 0 !important;
 }}
 
 [data-testid="stChatMessage"] th, [data-testid="stChatMessage"] td {{
     border: 1px solid var(--border) !important;
-    padding: 0.4rem 0.6rem !important;
-    font-size: 0.82rem !important;
+    padding: 0.32rem 0.55rem !important;
+    font-size: 0.78rem !important;
 }}
 
 [data-testid="stChatMessage"] th {{
     background: var(--card) !important;
     font-weight: 600 !important;
-}}
-
-.aurora-msg-meta {{
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border);
 }}
 
 [data-testid="stHorizontalBlock"] {{

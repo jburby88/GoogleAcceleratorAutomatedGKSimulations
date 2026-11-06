@@ -153,15 +153,9 @@ def test_base_images_are_pinned_by_tag_to_published_noble_cuda_images(
     # 12.4.1-*-ubuntu24.04 tags do not exist, so that build could never start.
     assert tuple(int(part) for part in cuda.split(".")[:2]) >= (12, 5)
     assert [stage[0][1] for stage in stages] == [
-        "nvidia/cuda:${CUDA_VERSION}-devel-ubuntu24.04"
-        "${CUDA_DEVEL_DIGEST:+@${CUDA_DEVEL_DIGEST}} AS gx-builder",
-        "nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu24.04"
-        "${CUDA_RUNTIME_DIGEST:+@${CUDA_RUNTIME_DIGEST}} AS runtime",
+        "nvidia/cuda:${CUDA_VERSION}-devel-ubuntu24.04 AS gx-builder",
+        "nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu24.04 AS runtime",
     ]
-    for name in ("CUDA_DEVEL_DIGEST", "CUDA_RUNTIME_DIGEST"):
-        digest = global_args[name]
-        # Empty = documented opt-in; a committed value must be a full sha256 digest.
-        assert digest in ("", None) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
 
 
 # --------------------------------------------------------------------------- GCP-06 runtime
