@@ -16,6 +16,7 @@ dependencies = [
   "pandas>=2.2.0,<4",
   "plotly>=5.24.0,<8",
   "google-cloud-bigquery>=3.25.0,<4",
+  "google-cloud-geminidataanalytics>=0.1.0,<1",
 ]
 
 [project.optional-dependencies]
@@ -25,7 +26,7 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["theme", "db", "streamlit_app"]
+py-modules = ["theme", "db", "chat", "streamlit_app"]
 
 [tool.ruff]
 line-length = 100

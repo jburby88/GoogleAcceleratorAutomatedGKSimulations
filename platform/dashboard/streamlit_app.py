@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from chat import ask_telemetry, default_suggestions
 from db import DashboardConfigError, DashboardDataClient
 from theme import (
     COVERAGE_COLORS,
@@ -146,7 +147,7 @@ def _status_badge_html(status: object) -> str:
 
 
 def _render_runs_html_table(runs_df: pd.DataFrame) -> None:
-    """Render a styled HTML table of campaign runs with semantic status pills."""
+    """Render a full-width, horizontally scrollable HTML table of campaign runs."""
     if runs_df.empty:
         return
     cols = [
@@ -158,6 +159,8 @@ def _render_runs_html_table(runs_df: pd.DataFrame) -> None:
             "geometry_id",
             "current_status",
             "last_failure_type",
+            "escalation_reason",
+            "tacc_folder_path",
         )
         if c in runs_df.columns
     ]
@@ -170,10 +173,12 @@ def _render_runs_html_table(runs_df: pd.DataFrame) -> None:
         "geometry_id": "Equilibrium / Geometry",
         "current_status": "Status",
         "last_failure_type": "Last Failure Mode",
+        "escalation_reason": "Escalation / Recovery Note",
+        "tacc_folder_path": "Queue Artifact Path",
     }
     th_html = "".join(f"<th>{headers.get(c, c)}</th>" for c in cols)
     rows_html: list[str] = []
-    for _, r in runs_df.head(15).iterrows():
+    for _, r in runs_df.head(25).iterrows():
         cells: list[str] = []
         for c in cols:
             raw = r.get(c)
@@ -190,6 +195,112 @@ def _render_runs_html_table(runs_df: pd.DataFrame) -> None:
         f"<tbody>{''.join(rows_html)}</tbody></table></div>",
         unsafe_allow_html=True,
     )
+
+
+def _render_telemetry_chat(
+    *,
+    client: DashboardDataClient,
+    campaign_id: str,
+    kpis_df: pd.DataFrame,
+    runs_df: pd.DataFrame,
+    tax_df: pd.DataFrame,
+    rb_df: pd.DataFrame,
+    cov_df: pd.DataFrame,
+) -> None:
+    """Render the Gemini Data Analytics conversational assistant scoped to the active campaign."""
+    st.markdown(
+        """
+        <div class="chat-banner">
+            <div>
+                <div style="font-size:0.98rem;font-weight:700;color:var(--text);">
+                    ✦ Ask Your Telemetry — Conversational Analytics Assistant
+                </div>
+                <div style="font-size:0.8rem;color:var(--text-muted);margin-top:2px;">
+                    Query campaign runs, OKF steering directives, failure modes, and transport flux coverage in natural language.
+                </div>
+            </div>
+            <span class="chat-engine-pill">Gemini Data Analytics · Read-Only Views</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    state_key = "aurora_chat_messages"
+    pending_key = "aurora_chat_pending_prompt"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = []
+
+    messages: list[dict[str, object]] = st.session_state[state_key]
+
+    # Starter suggestion chips when conversation is empty
+    starter_prompts = default_suggestions(campaign_id)
+    chip_cols = st.columns(len(starter_prompts))
+    for idx, prompt_text in enumerate(starter_prompts):
+        with chip_cols[idx]:
+            if st.button(
+                prompt_text,
+                key=f"chat_starter_{idx}",
+                width="stretch",
+            ):
+                st.session_state[pending_key] = prompt_text
+
+    user_prompt = st.chat_input(
+        f"Ask a question about campaign '{campaign_id}' telemetry...",
+        key="telemetry_chat_input",
+    )
+    active_prompt = user_prompt or st.session_state.pop(pending_key, None)
+
+    if active_prompt:
+        messages.append({"role": "user", "content": str(active_prompt)})
+        turn = ask_telemetry(
+            question=str(active_prompt),
+            campaign_id=campaign_id,
+            messages=messages,
+            project_id=getattr(client, "project", None),
+            dataset_id=getattr(client, "dataset", None),
+            data_mode=getattr(client, "data_mode", "bigquery"),
+            kpis_df=kpis_df,
+            runs_df=runs_df,
+            tax_df=tax_df,
+            rb_df=rb_df,
+            cov_df=cov_df,
+        )
+        messages.append(
+            {
+                "role": "assistant",
+                "content": turn.answer,
+                "thoughts": turn.thoughts,
+                "suggestions": turn.suggestions,
+                "engine": turn.engine,
+            }
+        )
+
+    for msg_idx, msg in enumerate(messages):
+        role = str(msg.get("role", "assistant"))
+        with st.chat_message(role):
+            thoughts = msg.get("thoughts")
+            if role == "assistant" and isinstance(thoughts, list) and thoughts:
+                with st.expander("Agent Reasoning & View Context", expanded=False):
+                    for step in thoughts:
+                        st.markdown(f"- {step}")
+            st.markdown(str(msg.get("content", "")))
+            suggestions = msg.get("suggestions")
+            if (
+                role == "assistant"
+                and msg_idx == len(messages) - 1
+                and isinstance(suggestions, list)
+                and suggestions
+            ):
+                s_cols = st.columns(len(suggestions))
+                for s_idx, sug in enumerate(suggestions):
+                    with s_cols[s_idx]:
+                        if st.button(
+                            f"↳ {sug}",
+                            key=f"chat_followup_{msg_idx}_{s_idx}",
+                            width="stretch",
+                        ):
+                            st.session_state[pending_key] = str(sug)
+                            st.rerun()
 
 
 def _kpi_card(column, badge: str, label: str, value: str) -> None:
@@ -354,9 +465,19 @@ def main(client: DashboardDataClient | None = None) -> None:
                     config={"displayModeBar": False},
                 )
         with col_b:
-            st.subheader("Checkpoint Continuations & Run Ledger")
+            st.subheader("Checkpoint Continuations & Operational Guardrails")
+            st.markdown(
+                '<div class="panel-subtitle">Automated walltime/preemption recovery and LLM invocation bounds</div>',
+                unsafe_allow_html=True,
+            )
             walltime_cnt = _as_int(row.get("walltime_resubmit_events"))
             llm_ratio = _as_float(row.get("llm_calls_per_failed_run"))
+            solvers_active = (
+                " · ".join(sorted({str(s) for s in runs_df["solver"].dropna()}))
+                if "solver" in runs_df.columns and not runs_df.empty
+                else "—"
+            )
+            esc_count = len(escalation_queue(runs_df))
             st.markdown(
                 f"""
                 <div class="stat-grid">
@@ -368,11 +489,25 @@ def main(client: DashboardDataClient | None = None) -> None:
                         <div class="stat-box-label">LLM Triage Calls per Failure (Cap &le; 1.0)</div>
                         <div class="stat-box-value">{llm_ratio:.2f}</div>
                     </div>
+                    <div class="stat-box">
+                        <div class="stat-box-label">Active Solvers in Campaign</div>
+                        <div class="stat-box-value">{html.escape(solvers_active)}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-box-label">Escalated to Physicist (needs_human/)</div>
+                        <div class="stat-box-value">{esc_count}</div>
+                    </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            _render_runs_html_table(runs_df)
+
+        st.subheader("Campaign Run Ledger")
+        st.markdown(
+            '<div class="panel-subtitle">Per-run execution status, equilibrium geometry, failure mode, and recovery notes (slide horizontally on narrow screens)</div>',
+            unsafe_allow_html=True,
+        )
+        _render_runs_html_table(runs_df)
 
     with tab_ops:
         col_c, col_d = st.columns(2)
@@ -440,6 +575,16 @@ def main(client: DashboardDataClient | None = None) -> None:
         esc_df = escalation_queue(runs_df)
         st.subheader(f"Physicist Escalation Queue (`needs_human/` — {len(esc_df)} runs)")
         st.dataframe(esc_df, width="stretch", hide_index=True)
+
+    _render_telemetry_chat(
+        client=client,
+        campaign_id=str(campaign),
+        kpis_df=kpis_df,
+        runs_df=runs_df,
+        tax_df=tax_df,
+        rb_df=rb_df,
+        cov_df=cov_df,
+    )
 
 
 if __name__ == "__main__":

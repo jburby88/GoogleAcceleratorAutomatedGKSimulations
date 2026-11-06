@@ -131,7 +131,7 @@ RUN apt-get update; \
       [[ "${status}" == "install ok installed" ]] || gx_runtime_pkgs+=("${pkg}"); \
     done < /opt/gx/runtime-packages.txt; \
     apt-get install -y --no-install-recommends --no-upgrade \
-      ca-certificates python3 python-is-python3 python3-netcdf4 python3-numpy python3-scipy \
+      ca-certificates openmpi-bin python3 python-is-python3 python3-netcdf4 python3-numpy python3-scipy \
       python3-pip python3-setuptools python3-wheel \
       "${gx_runtime_pkgs[@]}"; \
     rm -rf /var/lib/apt/lists/*; \

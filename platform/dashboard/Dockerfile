@@ -19,6 +19,7 @@ COPY platform/dashboard/pyproject.toml \
      platform/dashboard/README.md \
      platform/dashboard/db.py \
      platform/dashboard/theme.py \
+     platform/dashboard/chat.py \
      platform/dashboard/streamlit_app.py \
      /srv/dashboard/
 

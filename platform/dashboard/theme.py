@@ -331,24 +331,45 @@ button[data-baseweb="tab"][aria-selected="true"] {{
     margin-top: 0.2rem;
 }}
 
-/* HTML Data Table */
+/* HTML Data Table — full horizontal scroll support on all viewports */
 .data-table-wrap {{
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    max-width: 100%;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) var(--bg-subtle);
     box-shadow: var(--shadow);
     margin-bottom: 0.85rem;
 }}
+.data-table-wrap::-webkit-scrollbar {{
+    height: 8px;
+}}
+.data-table-wrap::-webkit-scrollbar-track {{
+    background: var(--bg-subtle);
+    border-radius: 0 0 var(--radius) var(--radius);
+}}
+.data-table-wrap::-webkit-scrollbar-thumb {{
+    background: var(--border);
+    border-radius: 999px;
+}}
+.data-table-wrap::-webkit-scrollbar-thumb:hover {{
+    background: var(--text-dim);
+}}
 .data-table {{
     width: 100%;
+    min-width: 760px;
     border-collapse: separate;
     border-spacing: 0;
     font-size: 0.81rem;
 }}
 .data-table th {{
     text-align: left;
-    padding: 0.65rem 0.9rem;
+    padding: 0.65rem 1rem;
     color: var(--text-muted);
     background: var(--bg-subtle);
     font-weight: 600;
@@ -356,13 +377,15 @@ button[data-baseweb="tab"][aria-selected="true"] {{
     text-transform: uppercase;
     letter-spacing: 0.05em;
     border-bottom: 1px solid var(--border);
+    white-space: nowrap;
 }}
 .data-table td {{
-    padding: 0.65rem 0.9rem;
+    padding: 0.65rem 1rem;
     color: var(--text);
     border-bottom: 1px solid var(--border-subtle);
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.78rem;
+    white-space: nowrap;
 }}
 .data-table tr:last-child td {{
     border-bottom: none;
@@ -384,6 +407,33 @@ button[data-baseweb="tab"][aria-selected="true"] {{
 .badge-red {{ color: var(--red); background: var(--red-muted); }}
 .badge-amber {{ color: var(--amber); background: var(--amber-muted); }}
 .badge-blue {{ color: var(--blue); background: var(--blue-muted); }}
+
+/* Conversational Telemetry Assistant Panel */
+.chat-banner {{
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}}
+.chat-engine-pill {{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.71rem;
+    font-weight: 600;
+    color: var(--blue);
+    background: var(--blue-muted);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    padding: 3px 10px;
+    border-radius: 999px;
+}}
 
 [data-testid="stHorizontalBlock"] {{
     gap: 1.1rem !important;

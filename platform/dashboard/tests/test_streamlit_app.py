@@ -376,3 +376,28 @@ def test_for_campaign_never_mixes_campaigns():
     df = pd.DataFrame({"campaign_id": ["a", None, "b"], "x": [1, 2, 3]})
     assert list(streamlit_app.for_campaign(df, "a")["x"]) == [1]
     assert streamlit_app.for_campaign(pd.DataFrame({"x": [1]}), "a").empty
+
+
+def test_table_horizontal_scroll_css_is_enabled():
+    from theme import build_dashboard_css
+
+    css_dark = build_dashboard_css(is_dark=True)
+    css_light = build_dashboard_css(is_dark=False)
+    for css in (css_dark, css_light):
+        assert "overflow-x: auto;" in css
+        assert "white-space: nowrap;" in css
+        assert "min-width: 760px;" in css
+
+
+def test_conversational_telemetry_chat_answers_questions():
+    client = FakeDashboardClient(populated_views())
+    at = run_app(client)
+    assert not at.exception
+    assert len(at.chat_input) == 1
+
+    at.chat_input[0].set_value("Why were runs escalated to needs_human/ in camp-b?").run()
+    assert not at.exception
+    assert len(at.chat_message) == 2
+    assistant_md = " ".join(m.value for m in at.chat_message[1].markdown)
+    assert "b-3" in assistant_md
+    assert "STALL" in assistant_md
