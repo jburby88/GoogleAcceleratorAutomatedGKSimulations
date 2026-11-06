@@ -385,7 +385,7 @@ cfg.update(
         "subnetwork": vpc_subnet,
         "no_external_ip": no_ext_ip,
         "gcs_bucket": bucket,
-        "gcs_mount_path": "/mnt/gk_bucket",
+        "gcs_mount_path": "/mnt/disks/gk_bucket",
         "gx_container_image": image,
         "worker_service_account_email": worker_sa,
         "cpu_only": environment != "prod",

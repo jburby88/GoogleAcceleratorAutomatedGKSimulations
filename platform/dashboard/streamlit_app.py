@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 
 import pandas as pd
@@ -9,7 +10,14 @@ import plotly.express as px
 import streamlit as st
 
 from db import DashboardConfigError, DashboardDataClient
-from theme import COVERAGE_COLORS, DASHBOARD_CSS, STATUS_COLORS
+from theme import (
+    COVERAGE_COLORS,
+    DASHBOARD_CSS,
+    PALETTE,
+    STATUS_COLORS,
+    build_dashboard_css,
+    plot_layout,
+)
 
 LOGGER = logging.getLogger("aurora_dashboard")
 
@@ -25,8 +33,10 @@ ESCALATION_COLUMNS = [
     "tacc_folder_path",
 ]
 COVERAGE_HOVER_COLUMNS = ["run_id", "geometry_id", "fidelity", "retry_count"]
-_OBSERVED_BADGE = '<span class="kpi-badge-observed">Observed</span>'
-_ESTIMATED_BADGE = '<span class="kpi-badge-estimated">Estimated (TODO(david))</span>'
+
+# TODO(david): confirm baseline manual troubleshooting duration and GPU walltime assumptions
+_OBSERVED_BADGE = '<span class="kpi-badge-observed">● Observed Telemetry</span>'
+_ESTIMATED_BADGE = '<span class="kpi-badge-estimated">◆ Modelled Savings</span>'
 
 
 @st.cache_data(ttl=CACHE_TTL_S, show_spinner="Loading telemetry views...")
@@ -99,9 +109,9 @@ def escalation_queue(runs_df: pd.DataFrame) -> pd.DataFrame:
     return escalated.reindex(columns=ESCALATION_COLUMNS)
 
 
-def runs_by_backend_figure(runs_df: pd.DataFrame):
+def runs_by_backend_figure(runs_df: pd.DataFrame, *, is_dark: bool = True):
     """Runs per backend and solver, one fixed colour per current_status."""
-    return px.histogram(
+    fig = px.histogram(
         runs_df,
         x="backend",
         color="current_status",
@@ -109,6 +119,76 @@ def runs_by_backend_figure(runs_df: pd.DataFrame):
         facet_col="solver",
         color_discrete_map=STATUS_COLORS,
         category_orders={"current_status": list(STATUS_COLORS)},
+        labels={
+            "backend": "Execution Backend",
+            "current_status": "Status",
+            "solver": "Solver",
+        },
+    )
+    fig.update_layout(**plot_layout(is_dark=is_dark))
+    fig.update_yaxes(title_text="Runs")
+    fig.for_each_annotation(lambda a: a.update(text=a.text.replace("solver=", "Solver: ")))
+    return fig
+
+
+def _status_badge_html(status: object) -> str:
+    val = str(status or "unknown").strip().lower()
+    cls = {
+        "completed": "badge-green",
+        "converged": "badge-green",
+        "running": "badge-blue",
+        "submitted": "badge-blue",
+        "human_resolved": "badge-amber",
+        "escalated": "badge-red",
+        "failed": "badge-red",
+    }.get(val, "badge-blue")
+    return f'<span class="badge {cls}">{html.escape(val)}</span>'
+
+
+def _render_runs_html_table(runs_df: pd.DataFrame) -> None:
+    """Render a styled HTML table of campaign runs with semantic status pills."""
+    if runs_df.empty:
+        return
+    cols = [
+        c
+        for c in (
+            "run_id",
+            "backend",
+            "solver",
+            "geometry_id",
+            "current_status",
+            "last_failure_type",
+        )
+        if c in runs_df.columns
+    ]
+    if not cols:
+        return
+    headers = {
+        "run_id": "Run ID",
+        "backend": "Backend",
+        "solver": "Solver",
+        "geometry_id": "Equilibrium / Geometry",
+        "current_status": "Status",
+        "last_failure_type": "Last Failure Mode",
+    }
+    th_html = "".join(f"<th>{headers.get(c, c)}</th>" for c in cols)
+    rows_html: list[str] = []
+    for _, r in runs_df.head(15).iterrows():
+        cells: list[str] = []
+        for c in cols:
+            raw = r.get(c)
+            if pd.isna(raw) or raw is None or str(raw) == "":
+                cells.append('<td style="color:var(--text-dim);">—</td>')
+            elif c == "current_status":
+                cells.append(f"<td>{_status_badge_html(raw)}</td>")
+            else:
+                cells.append(f"<td>{html.escape(str(raw))}</td>")
+        rows_html.append(f"<tr>{''.join(cells)}</tr>")
+    st.markdown(
+        f'<div class="data-table-wrap"><table class="data-table">'
+        f"<thead><tr>{th_html}</tr></thead>"
+        f"<tbody>{''.join(rows_html)}</tbody></table></div>",
+        unsafe_allow_html=True,
     )
 
 
@@ -118,14 +198,38 @@ def _kpi_card(column, badge: str, label: str, value: str) -> None:
         st.metric(label, value)
 
 
+def _toggle_theme() -> None:
+    st.session_state[" aurora_theme"] = (
+        "light" if st.session_state.get(" aurora_theme", "dark") == "dark" else "dark"
+    )
+
+
 def main(client: DashboardDataClient | None = None) -> None:
     """Render the Streamlit campaign telemetry and operational audit dashboard."""
     st.set_page_config(
         page_title="KR2 Gyrokinetic Database — aurora-steer",
+        page_icon="◆",
         layout="wide",
+        initial_sidebar_state="collapsed",
     )
-    st.markdown(DASHBOARD_CSS, unsafe_allow_html=True)
-    st.title("UT Austin × Google.org — KR2 Automated Gyrokinetic Database (`sim-babysitter`)")
+    if " aurora_theme" not in st.session_state:
+        st.session_state[" aurora_theme"] = "dark"
+    is_dark = st.session_state[" aurora_theme"] == "dark"
+    st.markdown(
+        build_dashboard_css(is_dark=is_dark) if is_dark is not True else DASHBOARD_CSS,
+        unsafe_allow_html=True,
+    )
+
+    head_left, head_right = st.columns([8.5, 1.5])
+    with head_left:
+        st.title("UT Austin × Google.org — KR2 Automated Gyrokinetic Database (`sim-babysitter`)")
+    with head_right:
+        st.button(
+            "☀️ Light" if is_dark else "🌙 Dark",
+            key="theme_toggle_btn",
+            on_click=_toggle_theme,
+            width="stretch",
+        )
 
     if client is None:
         try:
@@ -134,6 +238,25 @@ def main(client: DashboardDataClient | None = None) -> None:
             LOGGER.error("Dashboard configuration error: %s", exc)
             st.error(f"Dashboard configuration error: {exc}")
             return
+
+    st.markdown(
+        """
+        <div class="hero-banner">
+            <div>
+                <div class="hero-eyebrow"><span class="hero-live-dot"></span> Autonomous Gyrokinetic Simulation Watchdog &amp; OKF Steering</div>
+                <div style="font-size:0.86rem;color:var(--text-muted);">
+                    Transport-consistent high-&beta; stellarator optimization telemetry across <strong>TACC Vista Slurm</strong> and <strong>GCP Cloud Batch</strong>.
+                </div>
+            </div>
+            <div class="hero-meta-pills">
+                <span class="meta-pill">Solvers: GENE + GX</span>
+                <span class="meta-pill">TACC: Zero-AI Client</span>
+                <span class="meta-pill">GCP: Spot L4 / A100</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.caption(
         f"Data Source: **{client.source_label}** (prod only: `environment = 'prod'`, "
@@ -220,20 +343,45 @@ def main(client: DashboardDataClient | None = None) -> None:
         col_a, col_b = st.columns(2)
         with col_a:
             st.subheader("Runs by Execution Backend & Solver")
-            if _has_columns(runs_df, "backend", "current_status", "solver"):
-                st.plotly_chart(runs_by_backend_figure(runs_df), width="stretch")
-        with col_b:
-            st.subheader("Checkpoint Continuations (0 LLM Calls)")
-            st.write(
-                f"- **Total Slurm Walltime + GCP Spot Preemption Continuations:** `{_as_int(row.get('walltime_resubmit_events'))}`\n"
-                f"- **LLM Calls / Failure Event:** `{_as_float(row.get('llm_calls_per_failed_run')):.2f}` (Hard cap `<= 1.0`)"
+            st.markdown(
+                '<div class="panel-subtitle">Distribution of simulation outcomes across TACC Slurm and GCP Cloud Batch</div>',
+                unsafe_allow_html=True,
             )
-            st.dataframe(kpis_df, width="stretch")
+            if _has_columns(runs_df, "backend", "current_status", "solver"):
+                st.plotly_chart(
+                    runs_by_backend_figure(runs_df, is_dark=is_dark),
+                    width="stretch",
+                    config={"displayModeBar": False},
+                )
+        with col_b:
+            st.subheader("Checkpoint Continuations & Run Ledger")
+            walltime_cnt = _as_int(row.get("walltime_resubmit_events"))
+            llm_ratio = _as_float(row.get("llm_calls_per_failed_run"))
+            st.markdown(
+                f"""
+                <div class="stat-grid">
+                    <div class="stat-box">
+                        <div class="stat-box-label">Zero-LLM Preemption / Walltime Continuations</div>
+                        <div class="stat-box-value">{walltime_cnt}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-box-label">LLM Triage Calls per Failure (Cap &le; 1.0)</div>
+                        <div class="stat-box-value">{llm_ratio:.2f}</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            _render_runs_html_table(runs_df)
 
     with tab_ops:
         col_c, col_d = st.columns(2)
         with col_c:
             st.subheader("Failure Taxonomy & Recovery Rate")
+            st.markdown(
+                '<div class="panel-subtitle">Deterministic failure modes classified prior to OKF steering</div>',
+                unsafe_allow_html=True,
+            )
             if _has_columns(tax_df, "failure_type", "affected_runs_count", "solver"):
                 fig_tax = px.bar(
                     tax_df,
@@ -241,15 +389,33 @@ def main(client: DashboardDataClient | None = None) -> None:
                     y="affected_runs_count",
                     color="solver",
                     barmode="group",
+                    color_discrete_map={
+                        "GX": PALETTE["google_blue"],
+                        "GENE": PALETTE["ut_burnt_orange"],
+                    },
+                    labels={
+                        "failure_type": "Failure Mode",
+                        "affected_runs_count": "Affected Runs",
+                        "solver": "Solver",
+                    },
                 )
-                st.plotly_chart(fig_tax, width="stretch")
+                fig_tax.update_layout(**plot_layout(is_dark=is_dark))
+                st.plotly_chart(fig_tax, width="stretch", config={"displayModeBar": False})
         with col_d:
             st.subheader("OKF Runbook Effectiveness")
-            st.dataframe(rb_df, width="stretch")
+            st.markdown(
+                '<div class="panel-subtitle">Recovery rate by Ontology Knowledge File (OKF) runbook concept</div>',
+                unsafe_allow_html=True,
+            )
+            st.dataframe(rb_df, width="stretch", hide_index=True)
 
     with tab_audit:
         st.subheader(
             "Numerical Grid & Transport Flux Coverage (`ToBlick/mrx` Equilibria + Benchmark Geometries)"
+        )
+        st.markdown(
+            '<div class="panel-subtitle">Stationary electrostatic heat flux (Q_es) vs. radial grid resolution (nx) across converged and escalated runs</div>',
+            unsafe_allow_html=True,
         )
         if _has_columns(cov_df, "nx", "heat_flux_es", "coverage_status", "solver"):
             fig_cov = px.scatter(
@@ -260,12 +426,20 @@ def main(client: DashboardDataClient | None = None) -> None:
                 symbol="solver",
                 color_discrete_map=COVERAGE_COLORS,
                 hover_data=[c for c in COVERAGE_HOVER_COLUMNS if c in cov_df.columns],
+                labels={
+                    "nx": "Radial Grid Resolution (nx)",
+                    "heat_flux_es": "Electrostatic Heat Flux (Q_es)",
+                    "coverage_status": "Outcome",
+                    "solver": "Solver",
+                },
             )
-            st.plotly_chart(fig_cov, width="stretch")
+            fig_cov.update_traces(marker={"size": 13, "line": {"width": 1.5, "color": "#09090b"}})
+            fig_cov.update_layout(**plot_layout(is_dark=is_dark))
+            st.plotly_chart(fig_cov, width="stretch", config={"displayModeBar": False})
 
         esc_df = escalation_queue(runs_df)
         st.subheader(f"Physicist Escalation Queue (`needs_human/` — {len(esc_df)} runs)")
-        st.dataframe(esc_df, width="stretch")
+        st.dataframe(esc_df, width="stretch", hide_index=True)
 
 
 if __name__ == "__main__":
