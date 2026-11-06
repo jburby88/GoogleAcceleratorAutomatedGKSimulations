@@ -1,0 +1,182 @@
+# syntax=docker/dockerfile:1
+# Containerized GX GPU runner + serverless GCP babysitter image (Cloud Batch, GKE, Cloud Run job).
+#
+# Build from the repository root. GX_COMMIT is required and has no default (GCP-11):
+#   docker build -f workstreams/kr2-gk-database/gcp/Dockerfile.gx-runner \
+#     --build-arg GX_COMMIT=<full 40-hex GX commit SHA> -t gx-runner:<tag> .
+# GX publishes no release tags (it is developed on its main branch, https://gx.readthedocs.io),
+# so pin the commit the physics team validated for the campaign. The build fails on anything
+# else and records the commit in /opt/gx/gx_build.json ($GX_BUILD_INFO).
+#
+# Base images: CUDA 12.6.3 on Ubuntu 24.04, pinned by tag. nvidia/cuda has no 12.4.x images for
+# ubuntu24.04 (its Ubuntu 24.04 images start with CUDA 12.5), and ubuntu22.04 ships Python 3.10,
+# below requires-python >=3.11. To pin by digest as well (recommended for CI and releases), pass
+#   --build-arg CUDA_DEVEL_DIGEST=sha256:<digest> --build-arg CUDA_RUNTIME_DIGEST=sha256:<digest>
+# resolved with `docker buildx imagetools inspect nvidia/cuda:12.6.3-devel-ubuntu24.04` (and
+# -runtime-). No digest is committed here because none could be verified when this was written.
+#
+# Driver: CUDA 12.6 needs NVIDIA driver >= 560.35.05. Older 5xx drivers (>= 525.60.13, e.g. the
+# R535 GKE "default") run it only through CUDA minor-version compatibility, which cannot JIT PTX
+# from a newer toolkit, so gx ships SASS for every target GPU: T4 sm_75, A100 sm_80, L4 sm_89,
+# plus compute_89 PTX for newer GPUs on new drivers. k8s/compute-classes.yaml requests
+# driverVersion: latest.
+
+ARG CUDA_VERSION=12.6.3
+ARG CUDA_DEVEL_DIGEST=""
+ARG CUDA_RUNTIME_DIGEST=""
+
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu24.04${CUDA_DEVEL_DIGEST:+@${CUDA_DEVEL_DIGEST}} AS gx-builder
+
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+ARG DEBIAN_FRONTEND=noninteractive
+
+# GX build dependencies, per the GX install docs (https://gx.readthedocs.io) and
+# Makefiles/Makefile.ubuntu: CUDA toolkit with cuFFT/cuBLAS/cuSOLVER/cuTENSOR/NCCL,
+# parallel MPI NetCDF-4 (libnetcdf-mpi-dev + libhdf5-openmpi-dev; GX unconditionally calls
+# nc_create_par / nc_open_par), FFTW3, OpenMPI and GSL.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends --no-upgrade \
+      build-essential ca-certificates git pkg-config \
+      libcutensor-dev libfftw3-dev libgsl-dev libhdf5-openmpi-dev \
+      libnccl-dev libnetcdf-mpi-dev libopenmpi-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+# Required, no default: the full 40-hex GX commit SHA. It is verified after checkout.
+ARG GX_COMMIT
+ARG GX_REPO=https://bitbucket.org/gyrokinetics/gx.git
+# GX reads its build configuration from Makefiles/Makefile.${GK_SYSTEM} (GX install docs; for an
+# unlisted system, copy Makefiles/Makefile.generic). "ubuntu" is inherited from the original
+# recipe; the build checks that it exists and lists the available ones if it does not.
+ARG GX_GK_SYSTEM=ubuntu
+# nvcc appends NVCC_APPEND_FLAGS to every invocation, so these targets apply whatever arch
+# variable the GX system Makefile uses. The cuobjdump check below proves what was built.
+ENV NVCC_APPEND_FLAGS="-gencode=arch=compute_75,code=sm_75 -gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_89,code=sm_89 -gencode=arch=compute_89,code=compute_89"
+
+# 1. Validate the build args, clone into /opt/gx-src (so Makefile's -DGX_PATH=\"${PWD}\" bakes
+#    GX_PATH=/opt/gx-src for runtime Miller geometry helper scripts), check out GX_COMMIT
+#    detached and verify HEAD.
+# 2. Build, then read the device code embedded in gx (cuobjdump) and fail unless it holds SASS
+#    for sm_75, sm_80 and sm_89 plus compute_89 PTX.
+# 3. Write /opt/gx/gx_build.json from the verified values and the archs actually found, and
+#    stage /opt/gx-src/geometry_modules/miller into /opt/gx/geometry_modules/miller.
+# 4. Verify gx links parallel MPI NetCDF (netcdf/mpi) and derive the runtime package set: the
+#    Debian packages that own the shared libraries gx links (ldd + dpkg -S). Driver libraries
+#    (libcuda, libnvidia-*) come from the GPU host at run time.
+RUN set -x; \
+    if [[ ! "${GX_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]]; then echo "ERROR: --build-arg GX_COMMIT=<full 40-hex lowercase GX commit SHA> is required (got '${GX_COMMIT:-}')" >&2; exit 1; fi; \
+    if [[ ! "${GX_REPO}" =~ ^https://[A-Za-z0-9._/-]+$ ]]; then echo "ERROR: GX_REPO must be a plain https:// URL (got '${GX_REPO}')" >&2; exit 1; fi; \
+    if [[ ! "${CUDA_VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "ERROR: the base image does not define CUDA_VERSION" >&2; exit 1; fi; \
+    git clone --no-checkout "${GX_REPO}" /opt/gx-src; \
+    git -C /opt/gx-src -c advice.detachedHead=false checkout --detach "${GX_COMMIT}"; \
+    gx_head="$(git -C /opt/gx-src rev-parse HEAD)"; \
+    if [[ "${gx_head}" != "${GX_COMMIT}" ]]; then echo "ERROR: checked out ${gx_head}, expected GX_COMMIT=${GX_COMMIT}" >&2; exit 1; fi; \
+    if [[ ! -f "/opt/gx-src/Makefiles/Makefile.${GX_GK_SYSTEM}" ]]; then echo "ERROR: GX has no Makefiles/Makefile.${GX_GK_SYSTEM}; available:" >&2; ls /opt/gx-src/Makefiles >&2 || true; exit 1; fi; \
+    PWD=/opt/gx-src make -C /opt/gx-src GK_SYSTEM="${GX_GK_SYSTEM}" CUDA_HOME=/usr/local/cuda -j"$(nproc)"; \
+    test -x /opt/gx-src/gx; \
+    test -f /opt/gx-src/geometry_modules/miller/gx_geo.py; \
+    cuobjdump -all --list-elf /opt/gx-src/gx | tee /tmp/gx-sass.txt; \
+    cuobjdump -all --list-ptx /opt/gx-src/gx | tee /tmp/gx-ptx.txt; \
+    gx_sass="$(grep -oE 'sm_[0-9]+[a-z]?\.cubin' /tmp/gx-sass.txt | sed 's/\.cubin$//' | sort -u -V || true)"; \
+    gx_ptx="$(grep -oE '(sm|compute)_[0-9]+[a-z]?\.ptx' /tmp/gx-ptx.txt | sed -E 's/^(sm|compute)_/compute_/; s/\.ptx$//' | sort -u -V || true)"; \
+    for arch in sm_75 sm_80 sm_89; do grep -qx "${arch}" <<<"${gx_sass}" || { echo "ERROR: gx has no ${arch} SASS (T4 sm_75, A100 sm_80, L4 sm_89 are required)" >&2; exit 1; }; done; \
+    grep -qx compute_89 <<<"${gx_ptx}" || { echo "ERROR: gx has no compute_89 PTX" >&2; exit 1; }; \
+    install -D -m 0755 /opt/gx-src/gx /usr/local/bin/gx; \
+    gx_archs="$(printf '%s\n' ${gx_sass} ${gx_ptx} | sed 's/.*/"&"/' | paste -sd, - | sed 's/,/, /g')"; \
+    mkdir -p /opt/gx/geometry_modules; \
+    cp -a /opt/gx-src/geometry_modules/miller /opt/gx/geometry_modules/miller; \
+    printf '{"schema_version": 1, "gx_repo": "%s", "gx_commit": "%s", "cuda_version": "%s", "cuda_archs": [%s], "real_gx": true}\n' "${GX_REPO}" "${GX_COMMIT}" "${CUDA_VERSION}" "${gx_archs}" > /opt/gx/gx_build.json; \
+    cat /opt/gx/gx_build.json; \
+    ldd /usr/local/bin/gx | tee /tmp/gx-ldd.txt; \
+    if ! grep -E 'netcdf/mpi/lib/libnetcdf\.so|libnetcdf_mpi\.so' /tmp/gx-ldd.txt; then echo "ERROR: gx must link parallel MPI NetCDF (netcdf/mpi), not serial libnetcdf" >&2; exit 1; fi; \
+    if grep 'not found' /tmp/gx-ldd.txt | grep -Ev '^[[:space:]]*lib(cuda|nvidia-[a-z0-9-]+)\.so'; then echo "ERROR: gx links shared libraries that are not installed (listed above)" >&2; exit 1; fi; \
+    pkg_of() { local f; for f in "$1" "$(readlink -f "$1")"; do dpkg -S "${f}" 2>/dev/null && return 0; case "${f}" in /usr/lib/*) dpkg -S "${f#/usr}" 2>/dev/null && return 0 ;; /lib/*) dpkg -S "/usr${f}" 2>/dev/null && return 0 ;; esac; done; echo "ERROR: no Debian package owns ${1}, so the runtime stage cannot provide it" >&2; return 1; }; \
+    awk '$2 == "=>" && $3 ~ /^\// { print $3 }' /tmp/gx-ldd.txt | sort -u > /tmp/gx-libs.txt; \
+    : > /tmp/gx-owners.txt; \
+    while read -r lib; do pkg_of "${lib}" >> /tmp/gx-owners.txt; done < /tmp/gx-libs.txt; \
+    grep -v '^diversion ' /tmp/gx-owners.txt | sed 's#: /.*##' | tr ',' '\n' | sed 's/^ *//; s/:.*//' | sort -u > /opt/gx/runtime-packages.txt; \
+    if grep -E -- '-dev$' /opt/gx/runtime-packages.txt; then echo "ERROR: a library gx links is owned by a -dev package (listed above)" >&2; exit 1; fi; \
+    cat /opt/gx/runtime-packages.txt; \
+    rm -rf /opt/gx-src /tmp/gx-*.txt
+
+FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu24.04${CUDA_RUNTIME_DIGEST:+@${CUDA_RUNTIME_DIGEST}} AS runtime
+
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+ARG DEBIAN_FRONTEND=noninteractive
+ARG GX_COMMIT
+LABEL org.opencontainers.image.title="gx-runner" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      gx.commit="${GX_COMMIT}"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    HDF5_USE_FILE_LOCKING=FALSE \
+    HOME=/tmp \
+    GX_BUILD_INFO=/opt/gx/gx_build.json
+
+COPY --from=gx-builder /opt/gx/ /opt/gx/
+COPY --from=gx-builder /opt/gx/geometry_modules/ /opt/gx-src/geometry_modules/
+COPY --from=gx-builder /usr/local/bin/gx /usr/local/bin/gx
+
+# Runtime packages (GCP-06, no -dev packages): the owners of gx's shared libraries computed in
+# the builder (skipping those the CUDA runtime image already has, so its CUDA libraries are never
+# upgraded underneath gx), python3 + python-is-python3 + python3-numpy + python3-scipy (required
+# at runtime when GX shells out to `python /opt/gx-src/geometry_modules/miller/gx_geo.py` for
+# geo_option="miller", GXSRC-12) + python3-netcdf4 for gx-diagnose and the checkpoint validator,
+# and pip/setuptools/wheel only for the install below, which purges them again.
+# Ubuntu 24.04 (noble) is Python 3.12: inside requires-python >=3.11 and equal to CI's 3.12.
+RUN apt-get update; \
+    gx_runtime_pkgs=(); \
+    while read -r pkg; do \
+      status="$(dpkg-query -W -f='${Status}' "${pkg}" 2>/dev/null || true)"; \
+      [[ "${status}" == "install ok installed" ]] || gx_runtime_pkgs+=("${pkg}"); \
+    done < /opt/gx/runtime-packages.txt; \
+    apt-get install -y --no-install-recommends --no-upgrade \
+      ca-certificates python3 python-is-python3 python3-netcdf4 python3-numpy python3-scipy \
+      python3-pip python3-setuptools python3-wheel \
+      "${gx_runtime_pkgs[@]}"; \
+    rm -rf /var/lib/apt/lists/*; \
+    if ldd /usr/local/bin/gx | grep 'not found' | grep -Ev '^[[:space:]]*lib(cuda|nvidia-[a-z0-9-]+)\.so'; then echo "ERROR: gx has unresolved shared libraries in the runtime image (listed above)" >&2; exit 1; fi; \
+    python3 -c 'import sys; assert sys.version_info[:2] == (3, 12), sys.version'
+
+# Unprivileged runtime user (GCP-06). The numeric USER below lets Kubernetes enforce
+# runAsNonRoot. HOME and all scratch space live in the world-writable /tmp.
+RUN groupadd --gid 10001 gx \
+ && useradd --uid 10001 --gid 10001 --home-dir /tmp --no-create-home --shell /usr/sbin/nologin gx \
+ && chmod 1777 /tmp
+
+# Third-party Python deps of the three local packages, pinned exactly to the versions of the
+# repository's dev venv, wheels only and --no-deps: pip resolves nothing transitively.
+RUN python3 -m pip install --no-cache-dir --break-system-packages --no-deps --only-binary=:all: \
+      requests==2.34.2 urllib3==2.8.0 idna==3.20 certifi==2026.10.23 charset-normalizer==3.5.2 \
+      tomlkit==0.15.2 f90nml==1.5.0
+
+WORKDIR /opt/ut-austin
+COPY platform/hpc-core /opt/ut-austin/platform/hpc-core
+COPY workstreams/kr2-gk-database/hpc /opt/ut-austin/workstreams/kr2-gk-database/hpc
+COPY workstreams/kr2-gk-database/gcp /opt/ut-austin/workstreams/kr2-gk-database/gcp
+
+# Local packages: no index, no build isolation (noble's setuptools 68.1 satisfies setuptools>=68),
+# no dependency resolution. Stale setuptools build/ trees from the build context are removed
+# first so they cannot leak deleted modules into the installed packages. pip, setuptools and
+# wheel are purged afterwards; the import check runs after the purge.
+RUN for d in platform/hpc-core workstreams/kr2-gk-database/hpc workstreams/kr2-gk-database/gcp; do \
+      rm -rf "/opt/ut-austin/${d}/build" "/opt/ut-austin/${d}"/*.egg-info; \
+    done; \
+    python3 -m pip install --no-cache-dir --break-system-packages --no-deps --no-index --no-build-isolation \
+      /opt/ut-austin/platform/hpc-core \
+      /opt/ut-austin/workstreams/kr2-gk-database/hpc \
+      /opt/ut-austin/workstreams/kr2-gk-database/gcp; \
+    python3 -m pip check; \
+    apt-get purge -y --auto-remove python3-pip python3-setuptools python3-wheel; \
+    for d in platform/hpc-core workstreams/kr2-gk-database/hpc workstreams/kr2-gk-database/gcp; do \
+      rm -rf "/opt/ut-austin/${d}/build" "/opt/ut-austin/${d}"/*.egg-info; \
+    done; \
+    python3 -c 'import f90nml, netCDF4, requests, tomlkit, hpc_core, tacc_exec, gcp_exec'; \
+    command -v python && test -f /opt/gx-src/geometry_modules/miller/gx_geo.py && python -c "import numpy, scipy"; \
+    for cmd in gcp-gx-babysitter gx-diagnose gx-task gx; do command -v "${cmd}"; done
+
+# /opt/ut-austin stays root-owned and read-only for the gx user, so a relative state_dir
+# (default ./state) fails loudly instead of silently writing to the ephemeral container disk.
+USER 10001:10001
+
+ENTRYPOINT ["gcp-gx-babysitter"]

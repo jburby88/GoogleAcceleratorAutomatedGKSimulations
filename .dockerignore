@@ -1,0 +1,57 @@
+# Build context for every `docker build ... .` from the repository root
+# (platform/aurora-steer/Dockerfile, platform/dashboard/Dockerfile,
+# workstreams/kr2-gk-database/gcp/Dockerfile.gx-runner).
+# Keep secrets, local state, virtualenvs and build artifacts out of the context and the images.
+
+# VCS, CI and internal review notes
+.git
+.github
+.agent
+.agents
+docs/review
+
+# Secrets and local environment (the template is harmless and kept)
+.env
+.env.*
+!.env.example
+**/*.pem
+**/*.key
+**/*credentials*.json
+**/service-account*.json
+
+# Virtualenvs, caches and Python build artifacts
+.venv
+.venv-*
+venv
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/build
+**/dist
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.coverage
+**/coverage.xml
+
+# Runtime state, outboxes and local telemetry databases
+**/state.json*
+**/state.lock
+**/*audit.jsonl
+**/outbox*.jsonl
+**/*.duckdb
+**/*.duckdb.wal
+workstreams/kr2-gk-database/hpc/queue/*/*
+
+# Terraform working files and state
+**/.terraform
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/*.tfvars
+**/*.tfvars.json
+
+# OS / editor artifacts
+**/.DS_Store
+**/*.swp
+**/*~

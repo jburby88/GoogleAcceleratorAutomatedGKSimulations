@@ -1,0 +1,35 @@
+# Repository code owners — UT Austin x Google.org AI for Science Accelerator.
+# GitHub requires a code-owner review for every path below (enable "Require review from Code
+# Owners" in branch protection). Replace handles once UT Austin GitHub usernames are confirmed.
+
+# Default owner for everything not matched below (root config, LICENSE, ruff.toml, Makefile, ...)
+*                                             @jburby88
+
+# CI/CD, deployment, infrastructure and the TACC zero-AI gate: security-sensitive
+/.github/                                     @jburby88
+/scripts/                                     @jburby88
+/platform/infra/                              @jburby88
+/Makefile                                     @jburby88
+/CODEOWNERS                                   @jburby88
+
+# Shared platform
+/platform/aurora-steer/                       @jburby88
+/platform/hpc-core/                           @jburby88
+/platform/telemetry/                          @jburby88
+/platform/dashboard/                          @jburby88
+
+# Workstream KR1: ML-based optimizer orchestration (Josh, Alan, Tobi, Nova)
+/workstreams/kr1-optimizer-orchestration/     @jburby88
+
+# Workstream KR2: hands-free gyrokinetic database generation (David, Edouard, Tan)
+/workstreams/kr2-gk-database/skill/           @jburby88
+/workstreams/kr2-gk-database/hpc/             @jburby88
+/workstreams/kr2-gk-database/gcp/             @jburby88
+/workstreams/kr2-gk-database/docs/            @jburby88
+
+# Workstream KR3: high-beta transport-consistent design (whole team)
+/workstreams/kr3-transport-consistent-design/ @jburby88
+
+# Docs and cross-workstream tests
+/docs/                                        @jburby88
+/tests/                                       @jburby88

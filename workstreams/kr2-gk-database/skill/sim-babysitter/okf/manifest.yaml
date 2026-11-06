@@ -1,0 +1,32 @@
+# OKF 2.0 Skill Manifest — Loaded dynamically by `platform/aurora-steer/app/okf_loader.py`
+# Physicists can add or refine runbook concepts below via GitHub PR without modifying Python code.
+#
+# `allowed_actions` is ENFORCED server-side (`app/guardrails.py`): for a given failure
+# type, aurora-steer accepts only the union of `allowed_actions` of the runbooks whose
+# `triggers` name that failure type (plus `escalate_to_human`, which is always allowed).
+# A failure type without a runbook, or a runbook without `allowed_actions`, can only
+# escalate. `["ALL"]` concepts cannot grant actions, and `resubmit_walltime` can never be
+# granted (walltime / Spot preemption continuations are local, zero-LLM).
+version: "2.0"
+skill: sim-babysitter
+workstream: kr2-gk-database
+description: "OKF 2.0 numerical stability triage runbooks for GENE (TACC Slurm) and GX (TACC & GCP Cloud Batch)"
+concepts:
+  - id: allowed-parameters
+    path: concepts/allowed-parameters.md
+    triggers: ["ALL"]
+  - id: runbook-stalled
+    path: concepts/runbook-stalled.md
+    triggers: ["STALL", "TIMESTEP_COLLAPSE"]
+    allowed_actions: ["warm_restart", "escalate_to_human"]
+  - id: runbook-spectra
+    path: concepts/runbook-spectra.md
+    triggers: ["SPECTRAL_PILEUP"]
+    allowed_actions: ["cold_restart", "escalate_to_human"]
+  - id: runbook-divergence
+    path: concepts/runbook-divergence.md
+    triggers: ["DIVERGENCE", "CRASH", "UNKNOWN"]
+    allowed_actions: ["escalate_to_human"]
+  - id: escalation-policy
+    path: concepts/escalation-policy.md
+    triggers: ["ALL"]

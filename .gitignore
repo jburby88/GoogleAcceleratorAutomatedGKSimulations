@@ -1,0 +1,65 @@
+# Python virtual environments & caches
+.venv/
+.venv-*/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+
+# Secrets & local environment files (NEVER commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*.json
+service-account*.json
+
+# Terraform state, plans & variable files (NEVER commit). Do commit .terraform.lock.hcl.
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/*.tfvars
+**/*.tfvars.json
+crash.log
+
+# Local simulation runtime state, outboxes, & generated DuckDB databases
+**/state.json
+**/state.json.dryrun
+**/state.lock
+**/audit.jsonl
+**/outbox.jsonl
+**/outbox.quarantine.jsonl
+**/*.duckdb
+**/*.duckdb.wal
+workstreams/kr2-gk-database/hpc/queue/running/*
+workstreams/kr2-gk-database/hpc/queue/completed/*
+workstreams/kr2-gk-database/hpc/queue/needs_human/*
+workstreams/kr2-gk-database/hpc/queue/pending/*
+!workstreams/kr2-gk-database/hpc/queue/**/.gitkeep
+
+# OS / editor / archive artifacts
+.DS_Store
+*.swp
+*~
+*.zip
+
+# Local agent rules, orchestration state, & internal review notes (NEVER commit to public repo)
+.agents/
+.agent/
+_agents/
+_agent/
+docs/review/
+GEMINI.md
+AGENTS.md
+CLAUDE.md
+

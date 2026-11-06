@@ -1,0 +1,9 @@
+{
+  "run_id": "cyclone_itg_converged_001",
+  "campaign_id": "pilot_50",
+  "equilibrium_id": "cyclone_cbc_miller",
+  "sim_time_target": 400.0,
+  "status": "pending",
+  "retry_count": 0,
+  "parameter_modifications": {}
+}

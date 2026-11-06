@@ -1,0 +1,69 @@
+name: Deploy Cloud Run images (manual)
+
+# Rolls new aurora-steer / dashboard images onto the Cloud Run services that Terraform owns.
+# Terraform (make gcp-deploy / gcp-apply) owns every service setting: identity, env, secrets,
+# scaling, probes. This workflow only builds an image under an immutable tag (the commit SHA),
+# pushes it, and points the service at its @sha256 digest via scripts/deploy_gcp_demo.sh release.
+#
+# One-time setup (see docs/RUNBOOK_DEMO_AND_TACC_SMOKE_TEST.md):
+#   - terraform with enable_github_wif=true and github_repository=<owner>/<repo>
+#   - GitHub environment "production" with required reviewers
+#   - repository variables GCP_PROJECT_ID, GCP_REGION, GCP_WIF_PROVIDER, GCP_DEPLOYER_SA
+#     (the last two from `terraform output github_wif_provider github_deployer_service_account`)
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_dashboard:
+        description: "Also build and roll the dashboard image"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, push by digest & roll Cloud Run images
+    # WIF only trusts this branch and environment; the guard fails fast with a clear reason.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GIT_SHA: ${{ github.sha }}
+      DEPLOY_DASHBOARD: ${{ inputs.deploy_dashboard }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Validate repository variables
+        run: |
+          [[ "${GOOGLE_CLOUD_PROJECT}" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || { echo "::error::Set the repository variable GCP_PROJECT_ID"; exit 1; }
+          [[ "${GCP_REGION}" =~ ^[a-z]+(-[a-z]+)+[0-9]+$ ]] || { echo "::error::Set the repository variable GCP_REGION"; exit 1; }
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@77e7a554d41e2ee56fc945c52dfd3f33d12def9a # v2.1.4
+
+      - name: Build, push and roll aurora-steer
+        run: ./scripts/deploy_gcp_demo.sh release aurora-steer
+
+      - name: Build, push and roll the dashboard
+        if: ${{ inputs.deploy_dashboard }}
+        run: ./scripts/deploy_gcp_demo.sh release dashboard
