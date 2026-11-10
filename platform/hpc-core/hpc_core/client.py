@@ -1,20 +1,4 @@
-"""Outbound HTTPS client for posting DiagnosticSummary and LifecycleEvent payloads to aurora-steer.
-
-Error contract (the watchdog relies on it):
-
-- `TriageTransientError` (a `TriageClientError`): nothing was decided. aurora-steer could not
-  be reached or could not answer right now: connection errors, timeouts, HTTP 429, HTTP 5xx
-  (429/502/503/504 are retried in-call with backoff first), or an HTTP 200 whose
-  `X-Aurora-Decision` header says the LLM itself failed (`llm_error`, `llm_timeout`; the
-  server's fallback directive is ignored). Retry later with the same Idempotency-Key.
-- Any other `TriageClientError`: the request or the answer is unusable (HTTP 4xx incl. 409,
-  redirects, oversize payload, malformed or unsafe directive, missing token). Retrying cannot
-  help: escalate to a human.
-
-Payloads are never truncated: a DiagnosticSummary of 2048 bytes or more is refused before
-sending (trim it upstream). The bearer token is never included in exception messages, and
-server-provided text is truncated to 300 characters.
-"""
+"""Outbound HTTPS client for posting simulation diagnostics and telemetry to aurora-steer."""
 
 from __future__ import annotations
 

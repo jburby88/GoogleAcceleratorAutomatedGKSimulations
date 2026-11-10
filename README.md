@@ -60,34 +60,32 @@ GoogleAcceleratorAutomatedGKSimulations/
 └── tests/e2e/             # Dual-backend end-to-end test
 ```
 
-### OKF Physics Runbooks & Parameter Guardrails (for physics-team review)
+### Physics Runbooks & Parameter Tuning
 
-All troubleshooting rules and allowlisted solver parameters live in Markdown/YAML under [`workstreams/kr2-gk-database/skill/sim-babysitter/`](workstreams/kr2-gk-database/skill/sim-babysitter/SKILL.md), so physicists can change agent behavior through pull requests without touching Python:
+All recovery strategies and allowed numerical knobs live in Markdown/YAML under [`workstreams/kr2-gk-database/skill/sim-babysitter/`](workstreams/kr2-gk-database/skill/sim-babysitter/SKILL.md). This lets the physics team tweak heuristics and parameter bounds via git without touching the Python driver:
 
-- **[`okf/manifest.yaml`](workstreams/kr2-gk-database/skill/sim-babysitter/okf/manifest.yaml)**: maps each failure type (`STALL`, `TIMESTEP_COLLAPSE`, `SPECTRAL_PILEUP`, `DIVERGENCE`, `CRASH`) to its runbook and to the actions the server accepts for it.
-- **[`okf/concepts/allowed-parameters.md`](workstreams/kr2-gk-database/skill/sim-babysitter/okf/concepts/allowed-parameters.md)**: the parameter allowlist (names, GENE/GX keys, `[min, max]` bounds, `warm_restart_allowed`). The TACC and GCP example configs mirror it; CI fails on any drift (`scripts/check_boundaries_and_deps.py`).
-- **Runbooks** (`runbook-stalled.md`, `runbook-spectra.md`, `runbook-divergence.md`, `escalation-policy.md`): recovery procedures; open physics questions for Prof. David Hatch's team are tracked in [`OPEN_QUESTIONS.md`](workstreams/kr2-gk-database/docs/OPEN_QUESTIONS.md).
-
----
-
-## Design Principles & Guardrails
-
-1. **Dependency-free HPC client.** `platform/hpc-core/` and `workstreams/kr2-gk-database/hpc/` use only the Python standard library plus `f90nml`, `tomlkit` and `requests`: no AI, LLM or cloud SDK runs on TACC login nodes. CI enforces it with an AST import scan (including dynamic-import tricks), a `pyproject.toml` audit and an isolated `.venv-tacc` allowlist (`make install-tacc`). `scripts/tacc_smoke_test.py` is held to the standard library only.
-2. **Compact telemetry.** Executors send `DiagnosticSummary` payloads under 2048 bytes (≤30 log lines plus scalar metrics). Oversized payloads are refused, never truncated. Raw HDF5/NetCDF output stays in storage.
-3. **Numerical-only, reject-only guardrails.** Only the allowlisted numerical parameters (`nx`, `ny`, `nz`, `dt_max`, `cfl_fraction`, `hyperdiffusion_coeff`, which maps to GX `[Dissipation] D_hyper`) may change, never geometry or physics profiles. Out-of-bounds, non-finite or non-allowlisted values are rejected, never clamped, on both the server and the client. Warm restarts (from checkpoint) are allowed only for timestep parameters (`dt_max`, `cfl_fraction`). Every other change forces a cold restart.
-4. **Bounded automation.** Duplicate deliveries hit an `Idempotency-Key` cache (no extra LLM call). `retry_count >= 2` escalates to a human without calling the LLM. A per-run LLM budget and rate limits cap spend. Slurm `TIMEOUT` and GCP Spot preemptions resume locally from checkpoint, with no LLM call. GCP never falls back to on-demand VMs or A100s unless the operator opts in (`allow_on_demand`, `allow_a100_fallback`).
-5. **Fail closed.** If aurora-steer is unreachable or returns an invalid directive, the run is escalated, never resubmitted blindly. Cancellations by users or admins, jobs that can never start, and unknown states all escalate.
-6. **Dataset provenance.** Each harvested run writes `runs/<run_id>/{input, fluxes.json, checksums.sha256, run_manifest.json}` (manifest schema 2.0). The manifest is written last, as the commit marker, and committed entries are never overwritten. It records checksums, code version, equilibrium origin, parameter patches, restart history, and a `dataset_eligible` verdict with reasons: converged, not escalated, not simulated, prod, provenance verified. The KR1 loader admits only eligible runs and splits train/val/test by `equilibrium_id`, so no geometry leaks across splits. The campaign layout extends the provenance of the Landreman et al. (2025) Zenodo GX stellarator dataset [10.5281/zenodo.14867777](https://zenodo.org/records/14867777), which itself is distributed as an HDF5 archive. Raw GX heat fluxes harvested in `fluxes.json` (`flux_normalization = "gyroBohm_divided_by_fsa_grad_x"`) match Zenodo's `Q_avgs_divided_by_FSA_grad_x` ($Q_{\text{gB}} / \langle |\nabla x|\rangle$), whereas Zenodo's `Q_avgs` multiplies by `<|grad x|>` (`fsa_grad_x`).
+- **[`okf/manifest.yaml`](workstreams/kr2-gk-database/skill/sim-babysitter/okf/manifest.yaml)**: Maps each failure mode (`STALL`, `TIMESTEP_COLLAPSE`, `SPECTRAL_PILEUP`, `DIVERGENCE`, `CRASH`) to its triage runbook and valid recovery actions.
+- **[`okf/concepts/allowed-parameters.md`](workstreams/kr2-gk-database/skill/sim-babysitter/okf/concepts/allowed-parameters.md)**: Allowlist for GENE/GX parameters (safe bounds, grid limits, and whether a checkpoint restart is permitted).
+- **Runbooks** (`runbook-stalled.md`, `runbook-spectra.md`, `runbook-divergence.md`, `escalation-policy.md`): Step-by-step diagnostic logic. Open physics questions for Prof. David Hatch's team are tracked in [`OPEN_QUESTIONS.md`](workstreams/kr2-gk-database/docs/OPEN_QUESTIONS.md).
 
 ---
 
-## Security Model
+## Key Design & Safety Principles
 
-- **aurora-steer** is reachable over HTTPS from TACC, which cannot mint Google identity tokens. The Cloud Run invoker IAM check is therefore disabled, and every endpoint except `/healthz` requires a constant-time-checked bearer token. The token lives only in Secret Manager (comma-separated values allow rotation). The service runs as a dedicated service account with Vertex AI access and insert-only grants on three telemetry tables.
-- **The dashboard is never public.** It sits behind direct Cloud Run IAP for `DASHBOARD_AUTHORIZED_MEMBERS`; with IAP off, only those members may invoke it, through `gcloud run services proxy`. It reads BigQuery views only, and only production rows.
-- **Least-privilege identities**: a Batch worker SA (bucket objects, image pulls, logs, Batch agent reporting), a babysitter SA (Batch jobs, may act only as the worker SA), a scheduler SA (may only start the babysitter job), and a GitHub deployer SA (push images, roll the two services) trusted only from `main` in the `production` environment through Workload Identity Federation.
-- **Dataset bucket**: uniform access, public access prevention enforced, soft delete (30 days by default), `prevent_destroy`. Terraform state lives in a versioned, private GCS bucket.
-- **Supply chain**: GitHub Actions pinned to commit SHAs (Dependabot keeps them current), images built under immutable tags and deployed by `@sha256` digest, non-root containers.
+1. **Lightweight HPC Footprint**: The TACC client (`platform/hpc-core/` and `workstreams/kr2-gk-database/hpc/`) has zero heavy cloud or AI dependencies. It runs on standard Python with `requests`, `f90nml`, and `tomlkit`, keeping login node installations clean and trouble-free.
+2. **Compact Telemetry**: Instead of streaming heavy simulation files, executors send small diagnostic summaries (<2 KB of scalar metrics and recent tail logs) over HTTPS. Large NetCDF/HDF5 simulation files stay in local storage (`$WORK` or GCS).
+3. **Strict Parameter Boundaries**: Automated triage can only modify allowlisted numerical knobs (`nx`, `ny`, `nz`, `dt_max`, `cfl_fraction`, `hyperdiffusion_coeff`). It never alters physics profiles, equilibrium geometry, or driving gradients. Any proposed modification outside safe bounds is safely rejected.
+4. **Pragmatic Automation**: Routine operational interruptions (like Slurm timeouts or Spot preemptions) resume automatically from checkpoints without calling the LLM. If a simulation fails repeatedly on the same issue, it escalates to a human after two tries.
+5. **Reproducible Dataset Provenance**: Every finished run writes an immutable manifest recording git hashes, equilibrium sources, parameter modifications, and convergence criteria, guaranteeing clean provenance for downstream ML surrogates.
+
+---
+
+## Security & Deployment
+
+- **TACC to Cloud Run Authentication**: TACC communicates with `aurora-steer` over HTTPS using a bearer token managed in Secret Manager, avoiding the need for cloud credentials on HPC nodes.
+- **Private Analytics Dashboard**: The Streamlit dashboard sits behind Cloud Run IAP for authorized team members, querying BigQuery production telemetry directly.
+- **Least-Privilege Service Accounts**: Distinct identities for Batch workers, job schedulers, and CI deployment via Workload Identity Federation.
+- **Protected Storage**: Simulation datasets are stored in versioned buckets with soft-delete enabled to prevent accidental data loss.
 
 ---
 

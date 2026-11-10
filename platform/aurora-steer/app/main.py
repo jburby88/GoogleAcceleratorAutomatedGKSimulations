@@ -1,20 +1,7 @@
-"""FastAPI entrypoint for `aurora-steer` (`/healthz`, `/triage`, `/v1/events`).
+"""FastAPI service for aurora-steer.
 
-Responsibilities:
-1. Enforce `<2 KB` payload size (bounded streaming read) and strict, finite-JSON
-   `DiagnosticSummary` validation on `/triage` requests.
-2. Enforce the deterministic 3-strike circuit breaker (`retry_count >= 2` escalates
-   to a human physicist with zero LLM calls) and a per-run LLM budget.
-3. Invoke the Google ADK 2.0 `SteeringEngine` (`app.runner`) with dynamically loaded
-   Open Knowledge Framework (OKF) runbooks (`app.okf_loader`), under a server-side
-   deadline with bounded retries on transient Vertex AI errors.
-4. Validate every LLM `ActionDirective` through server-side reject-only guardrails
-   (`app.guardrails`: runbook action policy, allowlist, bounds, restart semantics)
-   before returning or recording it. Every failure path fails closed to
-   `escalate_to_human`.
-5. Deduplicate retries by `Idempotency-Key` (in-flight sharing, request
-   fingerprinting, bounded LRU), and keep blocking I/O (DuckDB, BigQuery) off the
-   event loop.
+Provides endpoints for automated simulation triage (/triage), operational
+lifecycle events (/v1/events), and health checks (/healthz).
 """
 
 from __future__ import annotations

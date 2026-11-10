@@ -1,44 +1,7 @@
-"""Campaign dataset harvester: converged GK runs -> immutable file-per-run dataset entries.
+"""Dataset harvesting and provenance tracking for converged gyrokinetic simulation runs.
 
-Layout produced under ``<dataset_root>/campaigns/<campaign_id>/``::
-
-    equilibria/<equilibrium_id>/
-        equilibrium_meta.json   written once, by the first run that references the equilibrium
-        <geometry files>        (*eik*, wout_*.nc, geometry*, equilibrium*) copied once; a later
-                                run whose copy differs never overwrites it (that run is marked
-                                ineligible instead)
-    runs/<run_id>/
-        <gx.in | parameters>    final solver input file
-        fluxes.json             reduced transport scalars + ``flux_units``
-        checksums.sha256        ``sha256sum -c`` file for the two files above
-        run_manifest.json       provenance + dataset-eligibility verdict (the commit marker)
-
-Relation to Zenodo record 14867777 (DOM-06, GXSRC-08, ZEN-12): that record ("Data for the paper
-'How does ion temperature gradient turbulence depend on magnetic geometry? Insights from data and
-machine learning'", Landreman et al., 2025) ships GX stellarator results as an HDF5 archive plus
-a tarball. In GX (`src/geometry.cu:955-960`), raw flux outputs (`Diagnostics/HeatFlux*`,
-`ParticleFlux*`) divide gyroBohm-normalized fluxes $Q / Q_{\\text{gB}}$ by the flux-surface
-average $\\langle |\\nabla x| \\rangle$ (``fsa_grad_x``), matching Zenodo's
-``Q_avgs_divided_by_FSA_grad_x`` dataset array, whereas Zenodo's primary ``Q_avgs`` array
-multiplies by ``FSA_grad_x`` to undo that division. ``fluxes.json`` keeps ``flux_units =
-"gyroBohm"`` for schema-2.0 compatibility while recording ``flux_normalization``
-(``"gyroBohm_divided_by_fsa_grad_x"`` for GX, ``"gyroBohm_gene"`` for GENE) and optional
-``fsa_grad_x`` so downstream loaders never mix conventions silently. This file-per-run campaign
-layout is not the same HDF5 packaging as the Zenodo archive.
-
-Commit protocol (Lustre ``$WORK``/``$SCRATCH`` and GCS FUSE alike; no directory renames):
-every file is written with temp file + fsync + rename, and ``run_manifest.json`` is written
-last. A run directory without ``run_manifest.json`` is an uncommitted partial entry: readers
-must ignore it and the next harvest rewrites it. A committed entry is immutable (ML-08):
-re-harvesting the same submission (same final job id and submit nonce) returns the existing
-manifest; anything else raises DatasetEntryExistsError.
-
-Dataset eligibility (``eligibility_policy_version`` "1"): ``dataset_eligible`` is true iff
-``eligibility_reasons`` is empty. Anything that cannot be verified counts against eligibility
-(fail closed); the codes are listed in ELIGIBILITY_REASONS. ``eligibility_warnings`` never
-block. Strict JSON only: non-finite numbers are written as null, never as NaN/Infinity.
-
-Zero AI/Cloud SDK dependencies (stdlib only).
+Writes immutable per-run directories containing input decks, extracted fluxes,
+checksums, and run manifests for downstream machine-learning surrogates.
 """
 
 from __future__ import annotations

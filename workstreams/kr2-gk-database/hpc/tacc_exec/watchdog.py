@@ -1,26 +1,7 @@
-"""Backend-agnostic simulation watchdog (works identically on TACC Slurm & GCP Cloud Batch).
+"""Simulation watchdog for TACC Slurm and GCP Cloud Batch runs.
 
-Run state machine (persisted as `hpc_core.state.RunRecord.status`):
-
-    PENDING --(driver: intent persisted, folder moved)--> SUBMITTING --(job accepted)--> RUNNING
-    RUNNING --(continuation / patch / tier upgrade: intent persisted)--> SUBMITTING --> RUNNING
-    RUNNING --(job COMPLETED, converged, harvested)--> COMPLETED
-    PENDING|SUBMITTING|RUNNING --(guardrail, breaker, unknown outcome, external cancel ...)-->
-        NEEDS_HUMAN
-
-Crash-safety and spend-safety rules enforced here:
-- Every scheduler submission is preceded by a durable SUBMITTING intent with a unique
-  `submission_id`; `reconcile()` resolves interrupted submissions on the next tick (adopt the
-  job or resubmit idempotently when the backend supports it, otherwise escalate). A crash can
-  therefore never produce a job the state file does not know about, nor a blind resubmission.
-- Nothing deletes a run directory. Name collisions are escalated, never `rmtree`'d.
-- A run directory is never patched, moved or resubmitted while its job may still be active
-  (`POSSIBLY_ACTIVE_STATES`): mid-run failures cancel and wait for a terminal state first, and
-  escalations cancel a possibly-active job before moving its folder.
-- Counters that bound automated actions (unknown polls, poll errors, triage deferrals,
-  retries, walltime continuations) are persisted, so cron `--once` restarts never reset them.
-- aurora-steer down or returning garbage never leads to a resubmission: transient errors are
-  retried on later ticks (bounded), anything else escalates.
+Manages job lifecycle transitions, monitors run health, triggers automated triage
+via aurora-steer, and handles restarts or human escalations.
 """
 
 from __future__ import annotations

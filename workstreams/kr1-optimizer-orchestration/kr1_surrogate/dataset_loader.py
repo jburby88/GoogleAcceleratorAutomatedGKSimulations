@@ -1,49 +1,7 @@
-"""Fail-closed KR1 loader for the KR2 campaign dataset, with leak-free `equilibrium_id` splits.
+"""Dataset loader for KR2 gyrokinetic simulation campaigns.
 
-Layout consumed (written by KR2's ``platform/hpc-core/hpc_core/manifest.py``, which owns the
-field contract)::
-
-    <dataset_root>/campaigns/<campaign_id>/
-        equilibria/<equilibrium_id>/equilibrium_meta.json
-        runs/<run_id>/{run_manifest.json, fluxes.json, <solver input file>}
-
-This expanded file-per-run campaign layout extends the provenance of the Zenodo record
-14867777 GX stellarator dataset (https://zenodo.org/records/14867777, distributed there as an
-HDF5 archive); it is not a byte-for-byte copy of that record's format.
-
-Admission is fail-closed. A run becomes a :class:`DatasetSample` only if every check passes:
-readable strict JSON (no NaN/Infinity tokens), a supported schema version, consistent
-identifiers, ``converged is True``, ``escalated is False``, ``simulated is False``,
-``environment == "prod"``, ``dataset_eligible is True`` with no ``eligibility_reasons`` (the
-writer's verdict), recorded parameter patches, matching ``files`` sha256/size entries, a
-recognised flux-units label and finite numeric fluxes. A missing field excludes the run; it is
-never defaulted. Every exclusion is reported with a stable reason code
-(:attr:`CampaignLoadReport.exclusion_counts`); writer-side blockers surface as
-``marked_ineligible:<first eligibility reason>``.
-
-Patched runs are admitted by default: KR2 only patches physics-preserving numerical parameters
-and records every patch (docs/review/DOMAIN.md, ML-03). ``unpatched_only`` / ``hands_free_only``
-restrict the sample set for ablations.
-
-Fluxes are passed through unmodified: GX and GENE already write dimensionless gyroBohm-normalized
-fluxes (Q / Q_gB), so applying another normalization factor would corrupt them
-(docs/review/DOMAIN.md, ML-07). The units label is recorded on every sample and checked
-against :data:`SUPPORTED_FLUX_UNITS`.
-
-GX additionally divides its volume-integrated fluxes by the flux-surface average
-``<|grad x|>`` (GX ``src/geometry.cu`` ``fluxDenom``; docs/review/GXSRC.md GXSRC-08). A raw GX
-``heat_flux_es`` therefore corresponds to ``Q_avgs_divided_by_FSA_grad_x`` in Landreman et al.
-(2025), Zenodo record 14867777, whose primary ``Q_avgs`` is that value multiplied by
-``FSA_grad_x`` (ZEN-12). When the writer records them, ``flux_normalization`` (one of
-:data:`SUPPORTED_FLUX_NORMALIZATIONS`) and ``fsa_grad_x`` are exposed on every sample so a
-consumer can convert explicitly; the loader itself never multiplies by ``fsa_grad_x``.
-
-Converged runs may have ``Q <= 0`` (damped / sub-critical cases; Zenodo 14867777 reports 1,773
-of them). They are admitted by default because they carry stability information. A surrogate
-that regresses ``log(Q)`` must drop them: pass ``min_primary_flux`` (ZEN-13), which excludes
-runs whose primary flux is ``<= min_primary_flux`` with reason ``below_min_primary_flux``. Combining GX and GENE fluxes in one model additionally
-requires a common thermal-velocity / reference-length convention, which is an open question
-for the physics team; this loader never converts between conventions.
+Loads converged simulation samples with train/val/test splits grouped by
+equilibrium to prevent geometry leakage during ML surrogate model training.
 """
 
 from __future__ import annotations

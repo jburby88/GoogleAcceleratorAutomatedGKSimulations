@@ -1,32 +1,7 @@
-"""Thin, safe wrappers around Slurm CLI commands (sbatch, squeue, scancel, sacct).
+"""Slurm CLI wrappers for job submission, monitoring, and cancellation.
 
-Every call uses an argv list (never a shell), a bounded `timeout`, and strictly validated job
-ids (a job id can never be parsed as a command-line option).
-
-Idempotent submission (`capabilities.idempotent_submit = True`, see `hpc_core.protocol`):
-`submit(..., submission_id=S)` names the job `slurm_job_name_for_submission(S)` and looks that
-name up with `find_submission(S)` (squeue for jobs still known to slurmctld, then sacct for jobs
-already purged from it) before calling sbatch, and again whenever sbatch fails ambiguously
-(timeout, lost reply). An existing job is adopted instead of submitting a second one, so a crash
-or timeout between sbatch and the caller persisting the job id never double-submits.
-
-Job state aggregation (`query_job`): squeue/sacct can return several rows for one job id (job
-array tasks, heterogeneous job components). Rows are reduced deterministically:
-
-1. any row RUNNING                 -> RUNNING
-2. else any transient row          -> the first transient state in `_TRANSIENT_PRIORITY`
-3. else any UNKNOWN row            -> UNKNOWN
-4. else (every row terminal)       -> the worst terminal state in `_TERMINAL_SEVERITY`
-   (CANCELLED > NODE_FAIL > BOOT_FAIL > OUT_OF_MEMORY > FAILED > DEADLINE > TIMEOUT >
-   PREEMPTED > COMPLETED), so a job is COMPLETED only when every row completed.
-
-`elapsed_seconds` is the maximum over rows; `exit_code` and `reason` come from the first row in
-the aggregated state. `blocked` is set for a job that is not running and has a row that can
-never start without a human (held, invalid account/QOS, per-job limit, exhausted allocation
-minutes, dependency never satisfied). `cancelled_externally` is set when sacct reports
-"CANCELLED by <uid>" with a uid other than this process's uid. A manual `scancel` by the same
-Unix user is indistinguishable from the executor's own cancel: callers must also check their
-own cancel records.
+Executes sbatch, squeue, sacct, and scancel with timeouts and argument validation,
+handling job deduplication and state aggregation across tasks.
 """
 
 from __future__ import annotations
