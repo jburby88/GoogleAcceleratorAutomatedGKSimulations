@@ -395,14 +395,14 @@ def main(client: DashboardDataClient | None = None) -> None:
         """
         <div class="hero-banner">
             <div>
-                <div class="hero-eyebrow"><span class="hero-live-dot"></span> Autonomous Gyrokinetic Simulation Watchdog &amp; OKF Steering</div>
+                <div class="hero-eyebrow"><span class="hero-live-dot"></span> Gyrokinetic Simulation Watchdog &amp; Steering</div>
                 <div style="font-size:0.86rem;color:var(--text-muted);">
                     Transport-consistent high-&beta; stellarator optimization telemetry across <strong>TACC Vista Slurm</strong> and <strong>GCP Cloud Batch</strong>.
                 </div>
             </div>
             <div class="hero-meta-pills">
                 <span class="meta-pill">Solvers: GENE + GX</span>
-                <span class="meta-pill">TACC: Zero-AI Client</span>
+                <span class="meta-pill">TACC: Slurm Driver</span>
                 <span class="meta-pill">GCP: Spot L4 / A100</span>
             </div>
         </div>

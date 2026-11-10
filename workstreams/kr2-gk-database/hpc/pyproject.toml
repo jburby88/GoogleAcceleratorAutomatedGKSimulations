@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ut-kr2-tacc-exec"
 version = "0.2.0"
-description = "TACC-safe (Zero AI / Zero Cloud SDK) gyrokinetic simulation patchers, watchdog, and queue driver"
+description = "Lightweight gyrokinetic simulation patchers, watchdog, and queue driver for HPC clusters"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

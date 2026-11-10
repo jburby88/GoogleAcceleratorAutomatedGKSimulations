@@ -1,7 +1,7 @@
 """Durable lifecycle telemetry emitter (`hpc_core/telemetry.py`).
 
 Design guarantees:
-- Zero AI/LLM or cloud SDK dependencies (stdlib + `requests` client only).
+- Minimal dependencies (stdlib + `requests` client only).
 - Emits `workstream` and `environment` on every event. An unrecognised environment value is
   recorded as "sim", never as "prod", so misconfigured runs cannot inflate production KPIs.
 - Durable local outbox (`outbox.jsonl`): events are appended and fsync'd to disk first, then

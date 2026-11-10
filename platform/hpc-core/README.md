@@ -2,9 +2,9 @@
 
 Shared TACC-safe infrastructure primitives used across HPC/Cloud executors.
 
-## Lightweight Zero-AI TACC Footprint
+## Lightweight TACC Footprint
 - **Allowed third-party dependency:** `requests` ONLY (plus Python 3.11+ standard library).
-- **Zero** AI, LLM, GCP, or web framework packages (`google-genai`, `google-cloud-*`, `fastapi`, `pydantic`, etc.).
+- **No heavy cloud or ML packages** installed on the HPC cluster.
 
 ## Modules
 - `hpc_core.protocol`: `SchedulerBackend` protocol (`submit`, `query_job`, `cancel`), `JobStatus` (incl. `reason`, `blocked`, `cancelled_externally`) and the optional idempotent-submission contract (`BackendCapabilities.idempotent_submit`, `submit(..., submission_id=...)`, `find_submission`).

@@ -5,7 +5,7 @@
 # Default owner for everything not matched below (root config, LICENSE, ruff.toml, Makefile, ...)
 *                                             @jburby88
 
-# CI/CD, deployment, infrastructure and the TACC zero-AI gate: security-sensitive
+# CI/CD, deployment, infrastructure and TACC dependency checks: security-sensitive
 /.github/                                     @jburby88
 /scripts/                                     @jburby88
 /platform/infra/                              @jburby88

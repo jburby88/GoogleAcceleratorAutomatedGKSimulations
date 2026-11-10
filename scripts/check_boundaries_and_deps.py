@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CI gate for the TACC zero-AI/cloud-SDK boundary and public-repo invariants.
+"""CI checks for TACC dependencies, workstream boundaries, and repo safety.
 
 Checks (each returns human-readable errors; any error fails the gate):
 
@@ -675,7 +675,7 @@ def check_public_repo_hygiene() -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint for repository boundary, dependency, and hygiene verification."""
     parser = argparse.ArgumentParser(
-        description="Verify TACC Zero-AI compliance and repo invariants."
+        description="Verify dependencies, file tracking, and repo safety."
     )
     parser.add_argument(
         "--venv-python", default=None, help="Optional path to .venv-tacc/bin/python"
@@ -698,10 +698,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     venv_note = ", .venv-tacc distributions" if args.venv_python else ""
-    print(
-        "OK: Zero-AI TACC boundaries, pyproject allowlists, OKF parameter parity, "
-        f"OPEN_QUESTIONS tracking, public-repo hygiene{venv_note} verified."
-    )
+    print(f"OK: Dependencies, file tracking, and repo safety{venv_note} verified.")
     return 0
 
 

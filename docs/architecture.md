@@ -16,7 +16,7 @@ flowchart TD
         BQ --> DASH
     end
 
-    subgraph TACC["Backend 1: TACC Vista / LoneStar6 (Zero AI SDKs)"]
+    subgraph TACC["Backend 1: TACC Vista / LoneStar6 (Slurm)"]
         TD["tacc-driver + SimulationWatchdog (Login Node)"]
         SLURM["Slurm Compute Nodes (GENE Fortran + TACC GX)"]
         TD <-->|"sbatch / squeue / scancel"| SLURM
@@ -101,6 +101,6 @@ sequenceDiagram
 
 | Layer | Where It Runs | Why |
 | :--- | :--- | :--- |
-| **GENE & TACC GX Simulation Campaigns** | **TACC Vista / LoneStar6 (`SlurmBackend`)** | Primary HPC allocation running multi-node GENE (Fortran) and GX simulations with a zero-AI login-node watchdog (`tacc-driver`). |
+| **GENE & TACC GX Simulation Campaigns** | **TACC Vista / LoneStar6 (`SlurmBackend`)** | Primary HPC allocation running multi-node GENE (Fortran) and GX simulations with a lightweight login-node watchdog (`tacc-driver`). |
 | **Cloud GX Simulation Campaigns** | **GCP Cloud Batch (`CloudBatchBackend`)** | Serverless GPU execution (**Spot L4** by default; Spot A100 and on-demand capacity only when the operator enables `allow_a100_fallback` / `allow_on_demand`), mounting the GCS dataset bucket via FUSE. |
 | **`aurora-steer` + Telemetry Dashboard + `gcp-gx-babysitter`** | **GCP Cloud Run (Services & Job)** | Scale-to-zero HTTPS triage endpoint (single instance; `MODEL_ID`, default `gemini-4-argon`), BigQuery telemetry, private IAP dashboard, and 2-minute Cloud Scheduler watchdog ticks. |

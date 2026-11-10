@@ -1,6 +1,6 @@
-# `workstreams/kr2-gk-database/hpc` — Zero-AI Simulation Babysitter (`tacc-exec`)
+# `workstreams/kr2-gk-database/hpc` — HPC Simulation Driver (`tacc-exec`)
 
-Deterministic, **AI-SDK-free** simulation babysitter for GENE (Fortran namelists via `f90nml`) and GX (TOML via `tomlkit`).
+Deterministic simulation driver and watchdog for GENE (Fortran namelists via `f90nml`) and GX (TOML via `tomlkit`).
 
 - **Lightweight TACC login-node footprint:** imports only the Python stdlib + `ut-hpc-core`, `f90nml`, `tomlkit` and `requests`. Runs on TACC Vista / Lonestar6 login nodes over outbound HTTPS (`<2 KB` payloads).
 - **Dual-backend shared engine:** `SimulationWatchdog` and `QueueDriver` depend only on `hpc_core.SchedulerBackend`, so the same state machine, guardrails and patchers steer **TACC Slurm** (`SlurmBackend`) and **GCP Cloud Batch / GKE** (`../gcp/`).
@@ -25,7 +25,7 @@ Crash-safety guarantees (see `tacc_exec/watchdog.py` module docstring):
 
 ## Deploying on a TACC login node
 
-1. `make install-tacc` (creates `.venv-tacc` with the zero-AI allowlist) and copy `config.example.json` to `config.json`.
+1. `make install-tacc` (creates `.venv-tacc` with verified dependencies) and copy `config.example.json` to `config.json`.
 2. Edit `config.json`:
    - Use **absolute paths** on `$WORK` for `queue_dir`, `state_dir` and `dataset_output_dir`. Relative paths resolve against the directory of `config.json`, never the cron working directory. `$VARS` that are unset under cron are rejected.
    - Do **not** put `dataset_output_dir` or `state_dir` on `$SCRATCH`: TACC purges files that have not been accessed for about 10 days. `tacc-preflight` warns about this.

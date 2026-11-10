@@ -1,4 +1,4 @@
-"""Shared TACC-safe HPC & execution core (Zero AI / Zero Cloud SDK dependencies)."""
+"""Shared HPC execution core with lightweight dependencies."""
 
 from hpc_core.client import (
     AuroraSteerClient,

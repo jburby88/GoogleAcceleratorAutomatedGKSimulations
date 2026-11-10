@@ -4,7 +4,7 @@ This runbook covers:
 1. **Stage 1**: deploy and verify the GCP stack: aurora-steer (Cloud Run + Vertex AI Gemini), BigQuery telemetry, GCS dataset bucket, containerized GX, private dashboard.
 2. **Stage 2**: verify outbound HTTPS, authentication, telemetry ingestion and a live `/triage` round trip **from a TACC Vista or Lonestar6 login node**.
 3. **Stage 3**: GPU obtainability on GCP (Cloud Batch region rotation or GKE ComputeClasses).
-4. **Stage 4**: activate the zero-AI TACC Slurm babysitter (`tacc-driver`).
+4. **Stage 4**: activate the TACC Slurm babysitter (`tacc-driver`).
 5. Operations: token rotation, CI deploys, rollback.
 
 Prerequisites on the operator workstation: `gcloud` (authenticated as a project owner for the first deploy), `terraform >= 1.6`, `docker`, `python3`, `openssl`.
@@ -144,7 +144,7 @@ Terraform does not create a GKE cluster. With an existing GKE Autopilot or node-
 cd "$WORK"
 git clone https://github.com/jburby88/GoogleAcceleratorAutomatedGKSimulations.git
 cd GoogleAcceleratorAutomatedGKSimulations
-make install-tacc                        # .venv-tacc + zero-AI allowlist gate
+make install-tacc                        # .venv-tacc + dependency check
 mkdir -p "$WORK/gk-campaigns"
 cp workstreams/kr2-gk-database/hpc/config.example.json "$WORK/gk-campaigns/config.json"
 # Edit config.json: aurora_steer_url, queue/state/dataset dirs on $WORK ($SCRATCH is purged)

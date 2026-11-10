@@ -1,1 +1,1 @@
-"""TACC-safe gyrokinetic execution & babysitting package (Zero AI / Zero Cloud SDKs)."""
+"""Gyrokinetic simulation runner and watchdog for HPC clusters."""

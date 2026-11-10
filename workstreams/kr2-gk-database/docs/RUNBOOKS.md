@@ -1,6 +1,6 @@
 # Operational Runbooks (`RUNBOOKS.md`)
 
-## 1. Running on TACC Vista / Lonestar6 (Backend 1 — Slurm, Zero AI)
+## 1. Running on TACC Vista / Lonestar6 (Backend 1 — Slurm)
 
 ```bash
 # On ONE specific TACC login node (see "Crontab on TACC" below), e.g.:

@@ -1,4 +1,4 @@
-"""Tests for scripts/check_boundaries_and_deps.py, the TACC zero-AI/cloud-SDK CI gate.
+"""Tests for scripts/check_boundaries_and_deps.py dependency checks.
 
 Fake secrets and machine paths are assembled at runtime (see ``_fake``) so that the gate's
 real-repo hygiene scan, which also reads this file, never sees them as literals.

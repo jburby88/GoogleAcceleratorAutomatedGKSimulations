@@ -56,7 +56,7 @@ GoogleAcceleratorAutomatedGKSimulations/
 │   │   └── docs/                      #   OPEN_QUESTIONS.md, METRICS.md, COST_ESTIMATE.md, RUNBOOKS.md
 │   └── kr3-transport-consistent-design/  # KR3: validation-run enqueue helper (active learning is a Phase 3 item)
 ├── docs/                  # Architecture, OKR map, implementation plan, operator runbook
-├── scripts/               # Zero-AI/boundary gate, GCP deploy/release tool, TACC smoke test (+ their tests)
+├── scripts/               # Dependency checks, GCP deploy tool, TACC smoke test (+ tests)
 └── tests/e2e/             # Dual-backend end-to-end test
 ```
 
@@ -130,7 +130,7 @@ python3 scripts/tacc_smoke_test.py      # Python >= 3.8 standard library only, n
 ```bash
 cd "$WORK" && git clone https://github.com/jburby88/GoogleAcceleratorAutomatedGKSimulations.git
 cd GoogleAcceleratorAutomatedGKSimulations
-make install-tacc                         # .venv-tacc: zero AI/cloud SDKs, allowlist verified
+make install-tacc                         # .venv-tacc: lightweight TACC runtime
 cp workstreams/kr2-gk-database/hpc/config.example.json "$WORK/gk-campaigns/config.json"   # keep dataset/state on $WORK, not $SCRATCH
 export AURORA_STEER_BEARER_TOKEN="<token>"
 .venv-tacc/bin/tacc-preflight --config "$WORK/gk-campaigns/config.json"
@@ -149,7 +149,7 @@ After `make gcp-deploy`, Cloud Scheduler starts the `gcp-gx-babysitter` Cloud Ru
 
 ```bash
 make install        # .venv with every package and its dev extras
-make install-tacc   # .venv-tacc + zero-AI allowlist gate
+make install-tacc   # .venv-tacc + dependency check
 make lint           # gate + ruff check + ruff format --check
 make lint-infra     # terraform fmt/validate, shellcheck, hadolint, actionlint (skips tools you lack)
 make test           # all unit, contract and E2E tests, in a hermetic environment
