@@ -18,7 +18,7 @@ from app.schemas import ActionDirective, DiagnosticSummary, LifecycleEvent
 ALL_ACTIONS = frozenset({"warm_restart", "cold_restart", "resubmit_walltime", "escalate_to_human"})
 
 
-def test_okf_loader_discovers_sim_babysitter_across_workstreams() -> None:
+def test_okf_loader_discovers_sim_babysitter() -> None:
     skill = load_skill("sim-babysitter")
     assert skill.skill_name == "sim-babysitter"
     assert set(skill.parameter_rules.keys()) == {

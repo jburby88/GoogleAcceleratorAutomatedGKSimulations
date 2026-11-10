@@ -170,7 +170,7 @@ dockerfile_for() {
   case "$1" in
     aurora-steer) printf '%s' "platform/aurora-steer/Dockerfile" ;;
     dashboard) printf '%s' "platform/dashboard/Dockerfile" ;;
-    gx-runner) printf '%s' "workstreams/kr2-gk-database/gcp/Dockerfile.gx-runner" ;;
+    gx-runner) printf '%s' "simulations/gcp/Dockerfile.gx-runner" ;;
     *) die "unknown image '$1'" ;;
   esac
 }
@@ -369,7 +369,7 @@ import sys
 ) = sys.argv[1:14]
 no_ext_ip = no_ext_ip_raw.strip().lower() == "true"
 cfg = json.loads(
-    pathlib.Path("workstreams/kr2-gk-database/gcp/config.batch.example.json").read_text(encoding="utf-8")
+    pathlib.Path("simulations/gcp/config.batch.example.json").read_text(encoding="utf-8")
 )
 cfg.update(
     {

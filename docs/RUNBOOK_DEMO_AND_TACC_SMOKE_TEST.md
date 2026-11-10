@@ -25,7 +25,7 @@ Set at least:
 GOOGLE_CLOUD_PROJECT=<your-gcp-project-id>
 GCP_REGION=us-central1
 DASHBOARD_AUTHORIZED_MEMBERS=group:<team>@<domain>     # comma-separated IAM principals
-GX_COMMIT=<40-hex GX commit, see workstreams/kr2-gk-database/gcp/README.md>
+GX_COMMIT=<40-hex GX commit, see simulations/gcp/README.md>
 # Projects without an OAuth consent screen: set ENABLE_DASHBOARD_IAP=false. The dashboard stays
 # private; the members above open it with `gcloud run services proxy`.
 ENABLE_DASHBOARD_IAP=true
@@ -122,7 +122,7 @@ curl -sS -f -X POST "${AURORA_STEER_URL}/v1/events" \
 
 ## Stage 3: GPU obtainability on GCP
 
-The babysitter config (`config/batch_babysitter.json`) controls spend. By default it uses **Spot** capacity only. On-demand VMs (`allow_on_demand`) and the A100 fallback (`allow_a100_fallback`, about 5× the L4 Spot price) are off unless an operator sets them, and both escalation paths are capped (see `workstreams/kr2-gk-database/gcp/README.md`).
+The babysitter config (`config/batch_babysitter.json`) controls spend. By default it uses **Spot** capacity only. On-demand VMs (`allow_on_demand`) and the A100 fallback (`allow_a100_fallback`, about 5× the L4 Spot price) are off unless an operator sets them, and both escalation paths are capped (see `simulations/gcp/README.md`).
 
 ### Mode A: multi-region Cloud Batch rotation (`CloudBatchBackend`)
 
@@ -133,7 +133,7 @@ The babysitter config (`config/batch_babysitter.json`) controls spend. By defaul
 
 Terraform does not create a GKE cluster. With an existing GKE Autopilot or node-auto-provisioning cluster:
 
-1. `kubectl apply -f workstreams/kr2-gk-database/gcp/k8s/compute-classes.yaml`.
+1. `kubectl apply -f simulations/gcp/k8s/compute-classes.yaml`.
 2. Set `"backend": "gcp_k8s"` in the babysitter config. Jobs bind to `cloud.google.com/compute-class` and set `ttlSecondsAfterFinished`. On-demand classes are used only with `allow_on_demand`.
 
 ---
@@ -146,14 +146,14 @@ git clone https://github.com/jburby88/GoogleAcceleratorAutomatedGKSimulations.gi
 cd GoogleAcceleratorAutomatedGKSimulations
 make install-tacc                        # .venv-tacc + dependency check
 mkdir -p "$WORK/gk-campaigns"
-cp workstreams/kr2-gk-database/hpc/config.example.json "$WORK/gk-campaigns/config.json"
+cp simulations/hpc/config.example.json "$WORK/gk-campaigns/config.json"
 # Edit config.json: aurora_steer_url, queue/state/dataset dirs on $WORK ($SCRATCH is purged)
 export AURORA_STEER_BEARER_TOKEN="<token>"
 .venv-tacc/bin/tacc-preflight --config "$WORK/gk-campaigns/config.json"
 .venv-tacc/bin/tacc-driver --config "$WORK/gk-campaigns/config.json" --once
 ```
 
-For unattended runs from cron, use `hpc/scripts/ensure_running_cron.sh`. It pins the job to one login node (`TACC_EXPECTED_LOGIN_HOST`), takes a `flock`, and the driver adds a shared-filesystem lease. Keep the token out of the crontab line itself. See `workstreams/kr2-gk-database/hpc/README.md`.
+For unattended runs from cron, use `simulations/hpc/scripts/ensure_running_cron.sh`. It pins the job to one login node (`TACC_EXPECTED_LOGIN_HOST`), takes a `flock`, and the driver adds a shared-filesystem lease. Keep the token out of the crontab line itself. See `simulations/hpc/README.md`.
 
 ---
 

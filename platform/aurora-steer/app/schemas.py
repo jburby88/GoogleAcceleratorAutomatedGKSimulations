@@ -1,7 +1,7 @@
 """Pydantic v2 request/response contracts for `/triage` and `/v1/events`.
 
 Wire contract shared with `platform/hpc-core/hpc_core/client.py` and
-`workstreams/kr2-gk-database/hpc/tacc_exec/watchdog.py` (change only by agreement).
+`simulations/hpc/tacc_exec/watchdog.py` (change only by agreement).
 `ActionDirective` doubles as the Gemini structured-output schema, so its JSON
 schema must contain only keywords that `google-genai` / Vertex AI accept.
 """

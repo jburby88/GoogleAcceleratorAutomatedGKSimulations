@@ -23,7 +23,7 @@ RUN groupadd --gid 10001 appgroup && \
 COPY platform/aurora-steer/pyproject.toml platform/aurora-steer/README.md /srv/ut-austin/platform/aurora-steer/
 COPY platform/aurora-steer/app /srv/ut-austin/platform/aurora-steer/app
 COPY platform/telemetry/02_views.sql /srv/ut-austin/platform/telemetry/02_views.sql
-COPY workstreams/kr2-gk-database/skill /srv/ut-austin/workstreams/kr2-gk-database/skill
+COPY simulations/skill /srv/ut-austin/simulations/skill
 
 # Application code and the OKF guardrail files stay root-owned and read-only for the
 # runtime user (no `chown`): a compromised process cannot rewrite its own allowlist.

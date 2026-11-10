@@ -43,36 +43,34 @@ See [`docs/architecture.md`](docs/architecture.md) for the sequence diagrams.
 GoogleAcceleratorAutomatedGKSimulations/
 ├── platform/
 │   ├── aurora-steer/      # Cloud Run FastAPI + Google ADK agent (Vertex AI Gemini); loads OKF skills by name
-│   ├── dashboard/         # Streamlit KR2 dashboard: BigQuery views, prod rows only (local DuckDB mode for inspection)
-│   ├── hpc-core/          # Dependency-free HPC client: Slurm backend, state, HTTPS client, telemetry outbox, dataset manifest
+│   ├── dashboard/         # Streamlit dashboard: BigQuery views, prod rows only (local DuckDB mode for inspection)
+│   ├── hpc-core/          # HPC client: Slurm backend, state, HTTPS client, telemetry outbox, dataset manifest
 │   ├── telemetry/         # BigQuery DDL (01_tables.sql) + 8 KPI/operational views (02_views.sql) + contract tests
 │   └── infra/terraform/   # Cloud Run, IAP, BigQuery, GCS, Artifact Registry, Secret Manager, Cloud Batch IAM, WIF
-├── workstreams/
-│   ├── kr1-optimizer-orchestration/   # KR1: leak-free dataset loader, augmented-Lagrangian outer loop
-│   ├── kr2-gk-database/               # KR2: automated gyrokinetic database ("sim-babysitter")
-│   │   ├── skill/sim-babysitter/okf/  #   OKF manifest + physics runbooks + parameter allowlist (edited by the physics team)
-│   │   ├── hpc/                       #   Backend 1 (TACC Slurm): watchdog, GENE/GX patchers, cron driver
-│   │   ├── gcp/                       #   Backend 2 (GCP Cloud Batch / GKE): containerized GX
-│   │   └── docs/                      #   OPEN_QUESTIONS.md, METRICS.md, COST_ESTIMATE.md, RUNBOOKS.md
-│   └── kr3-transport-consistent-design/  # KR3: validation-run enqueue helper (active learning is a Phase 3 item)
+├── simulations/
+│   ├── skill/sim-babysitter/okf/  # OKF manifest + physics runbooks + parameter allowlist (edited by physics team)
+│   ├── hpc/                       # Backend 1 (TACC Slurm): watchdog, GENE/GX patchers, cron driver
+│   ├── gcp/                       # Backend 2 (GCP Cloud Batch / GKE): containerized GX
+│   └── docs/                      # OPEN_QUESTIONS.md, METRICS.md, COST_ESTIMATE.md, RUNBOOKS.md
+├── surrogates/            # Leak-free dataset loader, augmented Lagrangian optimization, active learning hooks
 ├── docs/                  # Architecture, OKR map, implementation plan, operator runbook
-├── scripts/               # Dependency checks, GCP deploy tool, TACC smoke test (+ tests)
+├── scripts/               # Boundary checks, GCP deploy tool, TACC smoke test (+ tests)
 └── tests/e2e/             # Dual-backend end-to-end test
 ```
 
 ### Physics Runbooks & Parameter Tuning
 
-All recovery strategies and allowed numerical knobs live in Markdown/YAML under [`workstreams/kr2-gk-database/skill/sim-babysitter/`](workstreams/kr2-gk-database/skill/sim-babysitter/SKILL.md). This lets the physics team tweak heuristics and parameter bounds via git without touching the Python driver:
+All recovery strategies and allowed numerical knobs live in Markdown/YAML under [`simulations/skill/sim-babysitter/`](simulations/skill/sim-babysitter/SKILL.md). This lets the physics team tweak heuristics and parameter bounds via git without touching the Python driver:
 
-- **[`okf/manifest.yaml`](workstreams/kr2-gk-database/skill/sim-babysitter/okf/manifest.yaml)**: Maps each failure mode (`STALL`, `TIMESTEP_COLLAPSE`, `SPECTRAL_PILEUP`, `DIVERGENCE`, `CRASH`) to its triage runbook and valid recovery actions.
-- **[`okf/concepts/allowed-parameters.md`](workstreams/kr2-gk-database/skill/sim-babysitter/okf/concepts/allowed-parameters.md)**: Allowlist for GENE/GX parameters (safe bounds, grid limits, and whether a checkpoint restart is permitted).
-- **Runbooks** (`runbook-stalled.md`, `runbook-spectra.md`, `runbook-divergence.md`, `escalation-policy.md`): Step-by-step diagnostic logic. Open physics questions for Prof. David Hatch's team are tracked in [`OPEN_QUESTIONS.md`](workstreams/kr2-gk-database/docs/OPEN_QUESTIONS.md).
+- **[`okf/manifest.yaml`](simulations/skill/sim-babysitter/okf/manifest.yaml)**: Maps each failure mode (`STALL`, `TIMESTEP_COLLAPSE`, `SPECTRAL_PILEUP`, `DIVERGENCE`, `CRASH`) to its triage runbook and valid recovery actions.
+- **[`okf/concepts/allowed-parameters.md`](simulations/skill/sim-babysitter/okf/concepts/allowed-parameters.md)**: Allowlist for GENE/GX parameters (safe bounds, grid limits, and whether a checkpoint restart is permitted).
+- **Runbooks** (`runbook-stalled.md`, `runbook-spectra.md`, `runbook-divergence.md`, `escalation-policy.md`): Step-by-step diagnostic logic. Open physics questions for Prof. David Hatch's team are tracked in [`OPEN_QUESTIONS.md`](simulations/docs/OPEN_QUESTIONS.md).
 
 ---
 
 ## Key Design & Safety Principles
 
-1. **Lightweight HPC Footprint**: The TACC client (`platform/hpc-core/` and `workstreams/kr2-gk-database/hpc/`) has zero heavy cloud or AI dependencies. It runs on standard Python with `requests`, `f90nml`, and `tomlkit`, keeping login node installations clean and trouble-free.
+1. **Lightweight HPC Footprint**: The TACC client (`platform/hpc-core/` and `simulations/hpc/`) has zero heavy cloud or AI dependencies. It runs on standard Python with `requests`, `f90nml`, and `tomlkit`, keeping login node installations clean and trouble-free.
 2. **Compact Telemetry**: Instead of streaming heavy simulation files, executors send small diagnostic summaries (<2 KB of scalar metrics and recent tail logs) over HTTPS. Large NetCDF/HDF5 simulation files stay in local storage (`$WORK` or GCS).
 3. **Strict Parameter Boundaries**: Automated triage can only modify allowlisted numerical knobs (`nx`, `ny`, `nz`, `dt_max`, `cfl_fraction`, `hyperdiffusion_coeff`). It never alters physics profiles, equilibrium geometry, or driving gradients. Any proposed modification outside safe bounds is safely rejected.
 4. **Pragmatic Automation**: Routine operational interruptions (like Slurm timeouts or Spot preemptions) resume automatically from checkpoints without calling the LLM. If a simulation fails repeatedly on the same issue, it escalates to a human after two tries.
@@ -131,13 +129,13 @@ python3 scripts/tacc_smoke_test.py      # Python >= 3.8 standard library only, n
 cd "$WORK" && git clone https://github.com/jburby88/GoogleAcceleratorAutomatedGKSimulations.git
 cd GoogleAcceleratorAutomatedGKSimulations
 make install-tacc                         # .venv-tacc: lightweight TACC runtime
-cp workstreams/kr2-gk-database/hpc/config.example.json "$WORK/gk-campaigns/config.json"   # keep dataset/state on $WORK, not $SCRATCH
+cp simulations/hpc/config.example.json "$WORK/gk-campaigns/config.json"   # keep dataset/state on $WORK, not $SCRATCH
 export AURORA_STEER_BEARER_TOKEN="<token>"
 .venv-tacc/bin/tacc-preflight --config "$WORK/gk-campaigns/config.json"
 .venv-tacc/bin/tacc-driver --config "$WORK/gk-campaigns/config.json" --once
 ```
 
-For unattended runs from cron, pinned to one login node with a lock, see [`workstreams/kr2-gk-database/hpc/README.md`](workstreams/kr2-gk-database/hpc/README.md).
+For unattended runs from cron, pinned to one login node with a lock, see [`simulations/hpc/README.md`](simulations/hpc/README.md).
 
 ### 4. Containerized GX on GCP Cloud Batch
 
@@ -156,16 +154,6 @@ make test           # all unit, contract and E2E tests, in a hermetic environmen
 make coverage       # make test with coverage
 ```
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs exactly these targets on Python 3.11, 3.12 and 3.13. Images ship on Python 3.12. `make test` never sees your `.env` or the deployed endpoints: the test environment strips URLs, tokens and BigQuery settings.
+CI runs linting and hermetic tests across Python 3.11–3.13 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Deployments can be triggered via GitHub Actions ([`.github/workflows/deploy-cloudrun.yml`](.github/workflows/deploy-cloudrun.yml)) or locally via `make gcp-deploy`.
 
-Deploying from GitHub: [`.github/workflows/deploy-cloudrun.yml`](.github/workflows/deploy-cloudrun.yml) is manual, runs from `main` only in the protected `production` environment, authenticates through Workload Identity Federation, and only rolls new image digests. Terraform owns all service configuration.
-
----
-
-## Licensing
-
-- This repository is licensed under the [Apache License 2.0](LICENSE).
-- **GENE is not open source.** It is distributed by the GENE development team under the GENE User Agreement (<https://genecode.org/>). This repository contains no GENE source code or binaries, and no container image built from it includes GENE. GENE runs only on TACC, from the operator's own licensed installation. The GCP backend runs GX only.
-- **GX** is open source. `Dockerfile.gx-runner` builds it from its upstream repository (<https://bitbucket.org/gyrokinetics/gx>) at the pinned `GX_COMMIT`. GX is distributed under its own license.
-
-See also [`docs/architecture.md`](docs/architecture.md), [`docs/OKR_MAP.md`](docs/OKR_MAP.md), [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) and [`workstreams/kr2-gk-database/docs/OPEN_QUESTIONS.md`](workstreams/kr2-gk-database/docs/OPEN_QUESTIONS.md).
+See also [`docs/architecture.md`](docs/architecture.md), [`docs/OKR_MAP.md`](docs/OKR_MAP.md), [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), and [`simulations/docs/OPEN_QUESTIONS.md`](simulations/docs/OPEN_QUESTIONS.md).

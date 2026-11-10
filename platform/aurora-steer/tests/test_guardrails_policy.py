@@ -13,13 +13,7 @@ from app.okf_loader import OKFLoadError, SkillNotFoundError, load_skill
 from app.prompts import SYSTEM_INSTRUCTION, build_triage_user_prompt
 from app.schemas import ActionDirective, DiagnosticSummary
 
-SKILL_DIR = (
-    Path(__file__).resolve().parents[3]
-    / "workstreams"
-    / "kr2-gk-database"
-    / "skill"
-    / "sim-babysitter"
-)
+SKILL_DIR = Path(__file__).resolve().parents[3] / "simulations" / "skill" / "sim-babysitter"
 
 
 @pytest.fixture(scope="module")

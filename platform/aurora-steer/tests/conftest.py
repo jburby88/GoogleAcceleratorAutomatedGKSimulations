@@ -26,7 +26,7 @@ from app.runner import SteeringEngine  # noqa: E402
 from app.schemas import ActionDirective, DiagnosticSummary  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SKILL_DIR = REPO_ROOT / "workstreams" / "kr2-gk-database" / "skill" / "sim-babysitter"
+SKILL_DIR = REPO_ROOT / "simulations" / "skill" / "sim-babysitter"
 
 
 class FakeSteeringEngine(SteeringEngine):

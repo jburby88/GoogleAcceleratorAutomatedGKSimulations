@@ -18,7 +18,7 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[1] / "check_boundaries_and_deps.py"
 
 HPC_CORE = Path("platform/hpc-core/hpc_core")
-KR2_HPC = Path("workstreams/kr2-gk-database/hpc")
+KR2_HPC = Path("simulations/hpc")
 SMOKE = Path("scripts/tacc_smoke_test.py")
 
 
@@ -204,7 +204,7 @@ def test_missing_runtime_paths_are_reported(
     monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
     assert gate.check_ast_imports() == [
         "[AST] TACC runtime directory missing: platform/hpc-core/hpc_core",
-        "[AST] TACC runtime directory missing: workstreams/kr2-gk-database/hpc",
+        "[AST] TACC runtime directory missing: simulations/hpc",
         "[AST] TACC smoke test missing: scripts/tacc_smoke_test.py",
     ]
 
@@ -331,7 +331,7 @@ def test_pyproject_missing_or_invalid_is_reported(
     errors = gate.check_pyproject_dependencies()
     assert [e.split(":")[0] for e in errors] == [
         "[PYPROJECT] Cannot parse platform/hpc-core/pyproject.toml",
-        "[PYPROJECT] Cannot parse workstreams/kr2-gk-database/hpc/pyproject.toml",
+        "[PYPROJECT] Cannot parse simulations/hpc/pyproject.toml",
     ]
 
 
@@ -397,8 +397,8 @@ def _parity_tree(
     monkeypatch.setattr(gate, "REPO_ROOT", root)
 
 
-OKF_REL = "workstreams/kr2-gk-database/skill/sim-babysitter/okf/concepts/allowed-parameters.md"
-GCP_REL = "workstreams/kr2-gk-database/gcp/config.batch.example.json"
+OKF_REL = "simulations/skill/sim-babysitter/okf/concepts/allowed-parameters.md"
+GCP_REL = "simulations/gcp/config.batch.example.json"
 
 
 def test_parity_accepts_consistent_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

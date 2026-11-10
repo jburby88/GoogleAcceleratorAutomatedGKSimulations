@@ -2,7 +2,7 @@
 
 ## Phase 1 (Weeks 1–3): Platform Foundation & 50-Run Pilot
 - Deploy `platform/infra/terraform` with `make gcp-deploy` (`aurora-steer`, private IAP `dashboard`, `sim_babysitter_telemetry` BigQuery dataset, `<project>-gk-dataset` GCS bucket, `gcp-gx-babysitter` Cloud Run job, remote Terraform state); seed the `pilot_50` row in the `campaigns` table (runbook Stage 1.3).
-- Sign off `TODO(david)` and `TODO(tan)` items in [`OPEN_QUESTIONS.md`](../workstreams/kr2-gk-database/docs/OPEN_QUESTIONS.md).
+- Sign off `TODO(david)` and `TODO(tan)` items in [`OPEN_QUESTIONS.md`](../simulations/docs/OPEN_QUESTIONS.md).
 - Run `pilot_50` across TACC Vista (`tacc-driver`) and GCP Cloud Batch Spot L4 (`gcp-gx-babysitter`), verifying `<2 KB` payloads, `<= 1.0` LLM calls/failure, and that harvested runs carry manifest v2 provenance with a `dataset_eligible` verdict.
 
 ## Phase 2 (Months 2–4): Production Campaign & KR1 Surrogates

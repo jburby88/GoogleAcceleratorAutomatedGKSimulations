@@ -1,6 +1,6 @@
 # Build context for every `docker build ... .` from the repository root
 # (platform/aurora-steer/Dockerfile, platform/dashboard/Dockerfile,
-# workstreams/kr2-gk-database/gcp/Dockerfile.gx-runner).
+# simulations/gcp/Dockerfile.gx-runner).
 # Keep secrets, local state, virtualenvs and build artifacts out of the context and the images.
 
 # VCS, CI and internal review notes
@@ -41,7 +41,7 @@ venv
 **/outbox*.jsonl
 **/*.duckdb
 **/*.duckdb.wal
-workstreams/kr2-gk-database/hpc/queue/*/*
+simulations/hpc/queue/*/*
 
 # Terraform working files and state
 **/.terraform

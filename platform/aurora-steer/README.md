@@ -1,6 +1,6 @@
 # `platform/aurora-steer` — Shared Cloud Run Steering & Telemetry Brain
 
-`aurora-steer` is a stateless FastAPI + **Google ADK 2.0 (`google-adk`)** service deployed on Google Cloud Run that serves all workstreams (`kr1-optimizer-orchestration`, `kr2-gk-database`, `kr3-transport-consistent-design`) by dynamically loading Open Knowledge Framework (OKF 2.0) skills by `skill_name`.
+`aurora-steer` is a stateless FastAPI + **Google ADK 2.0 (`google-adk`)** service deployed on Google Cloud Run that serves simulation triage (`simulations/`) and surrogate workflows (`surrogates/`) by dynamically loading Open Knowledge Framework (OKF 2.0) skills by `skill_name`.
 
 ## Endpoints
 
@@ -9,7 +9,7 @@
   1. Bounded body read (413 beyond the limit) and strict schema validation (422): strict JSON numbers, safe identifiers, no NaN/Inf, typed `previous_directives`, control characters stripped from `log_tail`.
   2. `retry_count >= 2` → `escalate_to_human` with 0 LLM calls (3-strike circuit breaker). A per-run LLM budget (`MAX_LLM_TRIAGES_PER_RUN`, default 6 per `LLM_RUN_BUDGET_WINDOW_S` = 24 h) does not trust the client's `retry_count`.
   3. One Google ADK `InMemoryRunner` session (async API) against Vertex AI with structured `ActionDirective` output. It runs under a `VERTEX_TIMEOUT_S` deadline (default 60 s, below the HPC client's 100 s) and retries transient Vertex errors (429/5xx) up to `VERTEX_MAX_ATTEMPTS` (default 2) within that deadline. The telemetry is presented to the model as untrusted data.
-  4. **Reject-only guardrails** on the model output:
+  4. **Parameter and runbook verification** on the model output:
      - the failure type's runbook action policy (`okf/manifest.yaml` `allowed_actions`; `resubmit_walltime` is never accepted);
      - allowlisted parameters within `[min, max]`;
      - only `warm_restart_allowed` parameters (`dt_max`, `cfl_fraction`) on a checkpoint restart;

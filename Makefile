@@ -14,17 +14,16 @@ VENV_TACC ?= .venv-tacc
 # Recursive (=) so `make install lint` re-evaluates it after the venv exists.
 VENV_PY = $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,$(PYTHON))
 PYTEST_ARGS := --import-mode=importlib
-LINT_PATHS := platform workstreams scripts tests
+LINT_PATHS := platform simulations surrogates scripts tests
 
 TEST_DIRS := \
 	platform/hpc-core/tests \
 	platform/aurora-steer/tests \
 	platform/dashboard/tests \
 	platform/telemetry/tests \
-	workstreams/kr2-gk-database/hpc/tests \
-	workstreams/kr2-gk-database/gcp/tests \
-	workstreams/kr1-optimizer-orchestration/tests \
-	workstreams/kr3-transport-consistent-design/tests \
+	simulations/hpc/tests \
+	simulations/gcp/tests \
+	surrogates/tests \
 	scripts/tests \
 	tests/e2e
 
@@ -37,12 +36,12 @@ TEST_UNSET := AURORA_STEER_URL AURORA_STEER_BEARER_TOKEN AURORA_STEER_TOKEN AURO
 	GCP_BATCH_CANDIDATE_REGIONS VPC_NAME_PREFIX VPC_SUBNET_CIDR ENABLE_CLOUD_NAT \
 	GCP_BATCH_NO_EXTERNAL_IP USE_CLOUD_BUILD
 TEST_ENV := env $(foreach v,$(TEST_UNSET),-u $(v)) NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost
-COV_PACKAGES := hpc_core tacc_exec gcp_exec app kr1_surrogate kr3_design db streamlit_app theme
+COV_PACKAGES := hpc_core tacc_exec gcp_exec app kr1_surrogate kr3_design gk_surrogates db streamlit_app theme
 
 TF_DIR := platform/infra/terraform
-SHELL_SCRIPTS := scripts/deploy_gcp_demo.sh workstreams/kr2-gk-database/hpc/scripts/ensure_running_cron.sh
+SHELL_SCRIPTS := scripts/deploy_gcp_demo.sh simulations/hpc/scripts/ensure_running_cron.sh
 DOCKERFILES := platform/aurora-steer/Dockerfile platform/dashboard/Dockerfile \
-	workstreams/kr2-gk-database/gcp/Dockerfile.gx-runner
+	simulations/gcp/Dockerfile.gx-runner
 TERRAFORM ?= terraform
 SHELLCHECK ?= shellcheck
 HADOLINT ?= hadolint
@@ -95,17 +94,16 @@ install:
 	$(VENV)/bin/python -m pip install \
 		-e "./platform/hpc-core" \
 		-e "./platform/aurora-steer[dev]" \
-		-e "./workstreams/kr2-gk-database/hpc[dev]" \
-		-e "./workstreams/kr2-gk-database/gcp[dev]" \
+		-e "./simulations/hpc[dev]" \
+		-e "./simulations/gcp[dev]" \
 		-e "./platform/dashboard[dev]" \
-		-e "./workstreams/kr1-optimizer-orchestration[dev]" \
-		-e "./workstreams/kr3-transport-consistent-design[dev]" \
+		-e "./surrogates[dev]" \
 		"pytest-cov>=5,<8"
 
 install-tacc:
 	$(PYTHON) -m venv $(VENV_TACC)
 	$(VENV_TACC)/bin/python -m pip install --upgrade pip
-	$(VENV_TACC)/bin/python -m pip install "./platform/hpc-core" "./workstreams/kr2-gk-database/hpc"
+	$(VENV_TACC)/bin/python -m pip install "./platform/hpc-core" "./simulations/hpc"
 	$(PYTHON) scripts/check_boundaries_and_deps.py --venv-python $(VENV_TACC)/bin/python
 
 check-tacc-deps:
@@ -159,7 +157,7 @@ dashboard:
 docker-build:
 	docker build -f platform/aurora-steer/Dockerfile -t "aurora-steer:$(IMAGE_TAG)" .
 	docker build -f platform/dashboard/Dockerfile -t "aurora-dashboard:$(IMAGE_TAG)" .
-	docker build --build-arg GX_COMMIT="$(GX_COMMIT)" -f workstreams/kr2-gk-database/gcp/Dockerfile.gx-runner -t "gx-runner:$(IMAGE_TAG)" .
+	docker build --build-arg GX_COMMIT="$(GX_COMMIT)" -f simulations/gcp/Dockerfile.gx-runner -t "gx-runner:$(IMAGE_TAG)" .
 
 gcp-init:
 	./scripts/deploy_gcp_demo.sh init
@@ -185,5 +183,5 @@ tacc-smoke-test:
 	$(PYTHON) scripts/tacc_smoke_test.py
 
 clean:
-	find platform workstreams scripts tests -type d \( -name "__pycache__" -o -name ".pytest_cache" -o -name ".ruff_cache" -o -name "build" -o -name "*.egg-info" \) -prune -exec rm -rf {} +
+	find platform simulations surrogates scripts tests -type d \( -name "__pycache__" -o -name ".pytest_cache" -o -name ".ruff_cache" -o -name "build" -o -name "*.egg-info" \) -prune -exec rm -rf {} +
 	rm -rf .pytest_cache .ruff_cache build dist

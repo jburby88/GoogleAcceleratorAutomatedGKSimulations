@@ -27,13 +27,7 @@ from app.okf_loader import LoadedSkill, OKFLoadError
 from app.runner import SteeringEngine
 from app.schemas import ActionDirective, DiagnosticSummary
 
-SKILL_DIR = (
-    Path(__file__).resolve().parents[3]
-    / "workstreams"
-    / "kr2-gk-database"
-    / "skill"
-    / "sim-babysitter"
-)
+SKILL_DIR = Path(__file__).resolve().parents[3] / "simulations" / "skill" / "sim-babysitter"
 
 WARM = {
     "action": "warm_restart",

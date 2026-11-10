@@ -13,7 +13,7 @@ updates:
     directories:
       - /platform/aurora-steer
       - /platform/dashboard
-      - /workstreams/kr2-gk-database/gcp
+      - /simulations/gcp
     schedule:
       interval: weekly
 
@@ -22,9 +22,8 @@ updates:
       - /platform/aurora-steer
       - /platform/dashboard
       - /platform/hpc-core
-      - /workstreams/kr2-gk-database/hpc
-      - /workstreams/kr2-gk-database/gcp
-      - /workstreams/kr1-optimizer-orchestration
-      - /workstreams/kr3-transport-consistent-design
+      - /simulations/hpc
+      - /simulations/gcp
+      - /surrogates
     schedule:
       interval: weekly

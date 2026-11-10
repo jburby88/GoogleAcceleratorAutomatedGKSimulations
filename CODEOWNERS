@@ -18,17 +18,11 @@
 /platform/telemetry/                          @jburby88
 /platform/dashboard/                          @jburby88
 
-# Workstream KR1: ML-based optimizer orchestration (Josh, Alan, Tobi, Nova)
-/workstreams/kr1-optimizer-orchestration/     @jburby88
+# Simulations: gyrokinetic simulation drivers, runbooks & config (David, Edouard, Tan)
+/simulations/                                 @jburby88
 
-# Workstream KR2: hands-free gyrokinetic database generation (David, Edouard, Tan)
-/workstreams/kr2-gk-database/skill/           @jburby88
-/workstreams/kr2-gk-database/hpc/             @jburby88
-/workstreams/kr2-gk-database/gcp/             @jburby88
-/workstreams/kr2-gk-database/docs/            @jburby88
-
-# Workstream KR3: high-beta transport-consistent design (whole team)
-/workstreams/kr3-transport-consistent-design/ @jburby88
+# Surrogates: dataset loader, surrogate training & active learning (Josh, Alan, Tobias, Nova)
+/surrogates/                                  @jburby88
 
 # Docs and cross-workstream tests
 /docs/                                        @jburby88

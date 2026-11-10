@@ -41,11 +41,11 @@ crash.log
 **/outbox.quarantine.jsonl
 **/*.duckdb
 **/*.duckdb.wal
-workstreams/kr2-gk-database/hpc/queue/running/*
-workstreams/kr2-gk-database/hpc/queue/completed/*
-workstreams/kr2-gk-database/hpc/queue/needs_human/*
-workstreams/kr2-gk-database/hpc/queue/pending/*
-!workstreams/kr2-gk-database/hpc/queue/**/.gitkeep
+simulations/hpc/queue/running/*
+simulations/hpc/queue/completed/*
+simulations/hpc/queue/needs_human/*
+simulations/hpc/queue/pending/*
+!simulations/hpc/queue/**/.gitkeep
 
 # OS / editor / archive artifacts
 .DS_Store

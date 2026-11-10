@@ -115,9 +115,9 @@ def sandbox(tmp_path: Path) -> dict[str, Path]:
     (root / "scripts").mkdir(parents=True)
     shutil.copy2(SCRIPT, root / "scripts" / SCRIPT.name)
     (root / "platform" / "infra" / "terraform").mkdir(parents=True)
-    cfg_dir = root / "workstreams" / "kr2-gk-database" / "gcp"
+    cfg_dir = root / "simulations" / "gcp"
     cfg_dir.mkdir(parents=True)
-    shutil.copy2(REPO_ROOT / "workstreams/kr2-gk-database/gcp/config.batch.example.json", cfg_dir)
+    shutil.copy2(REPO_ROOT / "simulations/gcp/config.batch.example.json", cfg_dir)
     (root / ".env").write_text(
         f"GOOGLE_CLOUD_PROJECT={PROJECT}\nAURORA_STEER_URL=http://127.0.0.1:8080\n"
     )

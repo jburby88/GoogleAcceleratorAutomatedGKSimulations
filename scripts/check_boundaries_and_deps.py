@@ -4,7 +4,7 @@
 Checks (each returns human-readable errors; any error fails the gate):
 
 * AST scan of the TACC runtime (``platform/hpc-core/hpc_core`` and
-  ``workstreams/kr2-gk-database/hpc``): only stdlib, first-party and allowlisted third-party
+  ``simulations/hpc``): only stdlib, first-party and allowlisted third-party
   imports, and no dynamic import/exec escape hatches. ``scripts/tacc_smoke_test.py`` runs on a
   login node before any venv exists, so it must be stdlib-only.
 * ``pyproject.toml`` dependency allowlists of the two TACC packages and, with
@@ -43,15 +43,13 @@ SMOKE_TEST_ALLOWED_ROOT_MODULES = STDLIB_MODULES
 # Repo-relative paths, resolved against REPO_ROOT at call time (tests monkeypatch REPO_ROOT).
 TACC_RUNTIME_DIRS = (
     Path("platform/hpc-core/hpc_core"),
-    Path("workstreams/kr2-gk-database/hpc"),
+    Path("simulations/hpc"),
 )
 TACC_SMOKE_TEST = Path("scripts/tacc_smoke_test.py")
-OKF_ALLOWED_PARAMETERS = Path(
-    "workstreams/kr2-gk-database/skill/sim-babysitter/okf/concepts/allowed-parameters.md"
-)
+OKF_ALLOWED_PARAMETERS = Path("simulations/skill/sim-babysitter/okf/concepts/allowed-parameters.md")
 PARITY_CONFIGS = (
-    Path("workstreams/kr2-gk-database/hpc/config.example.json"),
-    Path("workstreams/kr2-gk-database/gcp/config.batch.example.json"),
+    Path("simulations/hpc/config.example.json"),
+    Path("simulations/gcp/config.batch.example.json"),
 )
 
 ALLOWED_HPC_CORE_DEPS = {"requests"}
@@ -295,7 +293,7 @@ def check_pyproject_dependencies() -> list[str]:
     errors: list[str] = []
     checks = [
         (Path("platform/hpc-core/pyproject.toml"), ALLOWED_HPC_CORE_DEPS),
-        (Path("workstreams/kr2-gk-database/hpc/pyproject.toml"), ALLOWED_KR2_HPC_DEPS),
+        (Path("simulations/hpc/pyproject.toml"), ALLOWED_KR2_HPC_DEPS),
     ]
     for rel_path, allowed in checks:
         try:
@@ -614,14 +612,14 @@ def check_okf_and_client_config_parity() -> list[str]:
 def check_todo_tracking_parity() -> list[str]:
     """Ensure every inline `TODO(david)` or `TODO(tan)` marker is tracked in `OPEN_QUESTIONS.md`."""
     errors: list[str] = []
-    open_q_path = REPO_ROOT / "workstreams" / "kr2-gk-database" / "docs" / "OPEN_QUESTIONS.md"
+    open_q_path = REPO_ROOT / "simulations" / "docs" / "OPEN_QUESTIONS.md"
     if not open_q_path.is_file():
-        return ["[TODO] Missing workstreams/kr2-gk-database/docs/OPEN_QUESTIONS.md"]
+        return ["[TODO] Missing simulations/docs/OPEN_QUESTIONS.md"]
 
     open_q_text = open_q_path.read_text(encoding="utf-8")
     todo_re = re.compile(r"TODO\((david|tan)\)")
 
-    for folder_name in ("platform", "workstreams"):
+    for folder_name in ("platform", "simulations", "surrogates"):
         for path in _walk_files(REPO_ROOT / folder_name, _skip_non_source, errors, "TODO"):
             if path == open_q_path:
                 continue

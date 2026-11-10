@@ -169,9 +169,7 @@ def test_dual_backend_e2e_pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
         dataset_dir = tmp_path / "gcs_dataset_bucket"
         base_cfg = json.loads(
-            (
-                REPO_ROOT / "workstreams" / "kr2-gk-database" / "hpc" / "config.example.json"
-            ).read_text(encoding="utf-8")
+            (REPO_ROOT / "simulations" / "hpc" / "config.example.json").read_text(encoding="utf-8")
         )
 
         # 1. TACC Slurm GENE 3-strike circuit breaker

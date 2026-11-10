@@ -1,8 +1,8 @@
-"""Dynamic Open Knowledge Framework (OKF 2.0) skill & runbook loader across workstreams.
+"""Dynamic Open Knowledge Framework (OKF 2.0) skill & runbook loader.
 
 Design & Collaborator Workflow:
-- Each physics workstream under `workstreams/<workstream>/skill/<skill_name>/okf/`
-  owns its own OKF 2.0 knowledge graph (`manifest.yaml` + `concepts/*.md`).
+- Physics skills under `simulations/skill/<skill_name>/okf/`
+  own their OKF 2.0 knowledge graph (`manifest.yaml` + `concepts/*.md`).
 - Physicists (e.g., Prof. David Hatch's group for `sim-babysitter`) can refine
   troubleshooting runbooks and numerical parameter bounds via GitHub PRs by
   editing Markdown/YAML files without touching Python application code.
@@ -176,7 +176,7 @@ def _default_repo_root() -> Path:
 
 
 def resolve_skill_okf_dir(skill_name: str, skills_root: Path | None = None) -> Path:
-    """Locate `<skill_name>/okf` either under an explicit skills_root or across `workstreams/*/skill/`."""
+    """Locate `<skill_name>/okf` either under an explicit skills_root or under simulations/skill/."""
     if not isinstance(skill_name, str) or not _SAFE_NAME_RE.match(skill_name):
         raise OKFLoadError(f"Unsafe or invalid skill_name: {skill_name!r}")
 
@@ -187,7 +187,10 @@ def resolve_skill_okf_dir(skill_name: str, skills_root: Path | None = None) -> P
         env_dir = os.getenv("OKF_SKILLS_DIR", "").strip()
         if env_dir:
             candidates.append(Path(env_dir).resolve() / skill_name / "okf")
-        workstreams_dir = _default_repo_root() / "workstreams"
+        repo_root = _default_repo_root()
+        candidates.append(repo_root / "simulations" / "skill" / skill_name / "okf")
+        candidates.append(repo_root / "surrogates" / "skill" / skill_name / "okf")
+        workstreams_dir = repo_root / "workstreams"
         if workstreams_dir.is_dir():
             for ws in sorted(workstreams_dir.iterdir()):
                 if ws.is_dir():
