@@ -17,7 +17,7 @@ dependencies = [
   "plotly>=5.24.0,<8",
   "google-cloud-bigquery>=3.25.0,<4",
   "google-adk>=2.0.0,<3.0",
-  "google-genai>=1.10.0,<3.0",
+  "google-genai>=1.10.0,<4.0",
 ]
 
 [project.optional-dependencies]
