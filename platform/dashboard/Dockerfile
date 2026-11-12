@@ -1,7 +1,7 @@
 # Build from repository root:
 #   docker build -f platform/dashboard/Dockerfile -t aurora-dashboard:<tag> .
 # Only platform/dashboard is copied and installed: the image carries no aurora-steer code.
-FROM python:3.12-slim-bookworm
+FROM python:3.15-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
