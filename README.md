@@ -1,6 +1,6 @@
-# UT Austin × Google.org AI for Science: Transport-Consistent Fusion Design
+# UT Austin × Google.org AI for Science: Transport-Consistent Optimization of High-Beta Stellarators
 
-Open-source platform (Apache-2.0) developed under the UT Austin / Google.org AI for Science partnership to accelerate transport-consistent magnetic fusion plasma optimization via automated gyrokinetic simulations and machine-learning surrogates.
+Open-source platform (Apache-2.0) developed under the UT Austin / Google.org Impact Challenge: AI for Science partnership to accelerate transport-consistent optimization of high-beta stellarators via automated gyrokinetic simulations and machine-learning surrogates.
 
 ---
 

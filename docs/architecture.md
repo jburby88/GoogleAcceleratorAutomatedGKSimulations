@@ -1,4 +1,4 @@
-# System Architecture & Updated Sequence Diagrams (`docs/architecture.md`)
+# System Architecture & Sequence Diagrams (`docs/architecture.md`)
 
 ## 1. End-to-End Platform Architecture
 
@@ -22,10 +22,12 @@ flowchart TD
         TD <-->|"sbatch / squeue / scancel"| SLURM
     end
 
-    subgraph BATCH["Backend 2: GCP Cloud Batch (Serverless GPUs)"]
+    subgraph BATCH["Backend 2: GCP Cloud Batch & GKE (Serverless GPUs & TPUs)"]
         GB["gcp-gx-babysitter (Cloud Run v2 Job / 2m Scheduler)"]
-        CB["Cloud Batch Containerized GX (Spot L4 default; A100 / on-demand only by opt-in)"]
-        GB <-->|"submit / query / cancel"| CB
+        CB_GPU["C++ GX GPU Container (Spot L4 default; opt-in A100 / on-demand)"]
+        CB_TPU["GX-JAX TPU Container (Spot TPU v6e / v5p; opt-in on-demand)"]
+        GB <-->|"accelerator_family=gpu"| CB_GPU
+        GB <-->|"accelerator_family=tpu"| CB_TPU
     end
 
     subgraph DATA["Gyrokinetic Training Dataset (TACC $WORK & GCS Bucket)"]
@@ -40,12 +42,14 @@ flowchart TD
     end
 
     MRX -->|"Projected equilibria"| GCS_EQ
-    GCS_EQ -->|"FUSE Mount"| CB
+    GCS_EQ -->|"FUSE Mount"| CB_GPU
+    GCS_EQ -->|"FUSE Mount"| CB_TPU
     GCS_EQ -->|"Equilibrium inputs"| SLURM
     TD -->|"Outbound HTTPS (<2 KB)"| STEER
     GB -->|"HTTPS + Bearer (<2 KB)"| STEER
     TD -->|"Harvest completed runs"| GCS_RUNS
-    CB <-->|"GCS FUSE .restart.nc"| GCS_RUNS
+    CB_GPU <-->|"GCS FUSE .restart.nc"| GCS_RUNS
+    CB_TPU <-->|"GCS FUSE .restart.nc"| GCS_RUNS
     GB -->|"Direct FUSE Harvest"| GCS_RUNS
     GCS_RUNS -->|"Grouped by equilibrium_id"| KR1
     KR3 -->|"High-uncertainty validation runs"| GB
@@ -54,36 +58,36 @@ flowchart TD
 
 ---
 
-## 2. Dual-Backend Babysitting Sequence Diagram (TACC Slurm **and** GCP Cloud Batch)
+## 2. Dual-Backend Babysitting Sequence Diagram (TACC Slurm **and** GCP GPU/TPU)
 
-Yes — **automated babysitting works identically on both TACC Slurm and GCP Cloud Batch** via the shared `SchedulerBackend` protocol (`hpc_core/protocol.py`) and `SimulationWatchdog` (`tacc_exec/watchdog.py`):
+Automated babysitting works identically across **TACC Slurm** and **GCP Cloud Batch / GKE (GPU or TPU)** via the shared `SchedulerBackend` protocol (`hpc_core/protocol.py`), `SimulationWatchdog` (`tacc_exec/watchdog.py`), and the `gx-task` container wrapper (which invokes either C++ `gx` or the `gx-jax` CLI):
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant GCS as "Dataset & Queue ($WORK / GCS Bucket)"
     participant WD as "Watchdog (tacc-driver OR gcp-gx-babysitter)"
-    participant EXEC as "Scheduler (TACC Slurm OR GCP Cloud Batch Spot L4/A100)"
+    participant EXEC as "Scheduler (TACC Slurm OR GCP Batch/GKE GPU & TPU)"
     participant BRAIN as "aurora-steer (Cloud Run + Gemini)"
     participant KR1 as "KR1 Surrogate & Augmented Lagrangian"
 
-    WD->>EXEC: Submit run (GENE/GX on TACC Slurm OR GX on GCP Cloud Batch)
-    Note over EXEC,GCS: On Cloud Batch, GCS FUSE mounts /mnt/gk_bucket for .restart.nc
+    WD->>EXEC: Submit run (GENE/GX on TACC OR C++ GX GPU / GX-JAX TPU on GCP)
+    Note over EXEC,GCS: On GCP, gx-task mounts GCS FUSE (/mnt/gk_bucket) for .out.nc & .restart.nc
 
-    alt Slurm TIMEOUT or Cloud Batch Spot PREEMPTED (0 LLM Calls)
+    alt Slurm TIMEOUT or GCP Spot PREEMPTED (0 LLM Calls)
         EXEC-->>WD: State = TIMEOUT or PREEMPTED
         WD->>WD: Set Restart.restart=true / read_checkpoint=.true.
         WD->>EXEC: Resubmit from checkpoint (0 LLM calls, 0 strikes)
-    else Cloud Batch Spot L4 OUT_OF_MEMORY (0 LLM Calls)
-        EXEC-->>WD: State = OUT_OF_MEMORY (exitCode 137 on 24 GB L4)
-        WD->>EXEC: Upgrade L4 -> A100 only if allow_a100_fallback is set (capped), else escalate
+    else GCP OUT_OF_MEMORY (0 LLM Calls)
+        EXEC-->>WD: State = OUT_OF_MEMORY (exitCode 137)
+        WD->>EXEC: Step up memory tier (GPU L4 -> opt-in A100, or TPU v6e -> v5p), else escalate
     else Numerical Instability (STALL / TIMESTEP_COLLAPSE / SPECTRAL_PILEUP)
         EXEC-->>WD: Mid-run or terminal numerical failure detected
-        WD->>EXEC: Early cancel if still RUNNING (saves GPU hours)
+        WD->>EXEC: Early cancel if still RUNNING (saves GPU/TPU hours)
         WD->>BRAIN: POST /v1/skills/sim-babysitter/triage (<2 KB JSON + Idempotency-Key)
-        BRAIN->>BRAIN: Load OKF runbooks + 3-strike check + Reject-Only Guardrails
+        BRAIN->>BRAIN: Load OKF runbooks + 3-strike check + allowlist validation
         BRAIN-->>WD: ActionDirective (warm_restart or cold_restart)
-        WD->>WD: Client-side guardrails (reject-only) + patch parameters / gx.in
+        WD->>WD: Client-side allowlist check + patch parameters / gx.in
         WD->>EXEC: Resubmit patched simulation (retry_count + 1)
     else Divergence (NaN) or Strike 3 (retry_count >= 2)
         WD->>GCS: Move to queue/needs_human/<run_id>/ + write ISSUE.md + Slack alert
@@ -101,6 +105,7 @@ sequenceDiagram
 
 | Layer | Where It Runs | Why |
 | :--- | :--- | :--- |
-| **GENE & TACC GX Simulation Campaigns** | **TACC Vista / LoneStar6 (`SlurmBackend`)** | Primary HPC allocation running multi-node GENE (Fortran) and GX simulations with a lightweight login-node watchdog (`tacc-driver`). |
-| **Cloud GX Simulation Campaigns** | **GCP Cloud Batch (`CloudBatchBackend`)** | Serverless GPU execution (**Spot L4** by default; Spot A100 and on-demand capacity only when the operator enables `allow_a100_fallback` / `allow_on_demand`), mounting the GCS dataset bucket via FUSE. |
+| **GENE & TACC GX Simulation Campaigns** | **TACC Vista / LoneStar6 (`SlurmBackend`)** | Primary HPC allocation running multi-node GENE (Fortran) and C++ GX simulations with a lightweight login-node watchdog (`tacc-driver`). |
+| **Cloud GX GPU Campaigns** | **GCP Cloud Batch / GKE (`accelerator_family="gpu"`)** | Serverless C++ GX execution (**Spot L4** by default; Spot A100 and on-demand capacity only when enabled via `allow_a100_fallback` / `allow_on_demand`), mounting the GCS dataset bucket via FUSE. |
+| **Cloud GX-JAX TPU Campaigns** | **GCP Cloud Batch / GKE (`accelerator_family="tpu"`)** | JAX/XLA port of the GX stellarator flux-tube core (`simulations/gx-jax`) running on **Spot TPU `v6e` / `v5p`** (Cloud Batch or GKE Compute Classes) through the same `gx-task` wrapper, `.in` decks, and `.out.nc` / `.restart.nc` schema. |
 | **`aurora-steer` + Telemetry Dashboard + `gcp-gx-babysitter`** | **GCP Cloud Run (Services & Job)** | Scale-to-zero HTTPS triage endpoint (single instance; `MODEL_ID`, default `gemini-4-argon`), BigQuery telemetry, private IAP dashboard, and 2-minute Cloud Scheduler watchdog ticks. |
