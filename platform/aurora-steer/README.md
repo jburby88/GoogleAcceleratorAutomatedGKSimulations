@@ -4,11 +4,11 @@
 
 ## Endpoints
 
-- `GET /healthz` (unauthenticated): readiness, active Vertex AI model (`MODEL_ID`), OKF skill health. Returns **HTTP 503** (`"status": "degraded"`) when the OKF skill or the model configuration is invalid. The service also validates both at startup and refuses to start, so a broken revision never takes traffic.
+- `GET /healthz` (unauthenticated): readiness, active Gemini Enterprise Agent Platform model (`MODEL_ID`, default `gemini-4-argon`), OKF skill health. Returns **HTTP 503** (`"status": "degraded"`) when the OKF skill or the model configuration is invalid. The service also validates both at startup and refuses to start, so a broken revision never takes traffic.
 - `POST /triage` and `POST /v1/skills/{skill_name}/triage` (the path's skill wins over the body's `skill_name`): accept a `<2048`-byte `DiagnosticSummary` (`Bearer` auth, optional `Idempotency-Key`). The flow is:
   1. Bounded body read (413 beyond the limit) and strict schema validation (422): strict JSON numbers, safe identifiers, no NaN/Inf, typed `previous_directives`, control characters stripped from `log_tail`.
   2. `retry_count >= 2` → `escalate_to_human` with 0 LLM calls (3-strike circuit breaker). A per-run LLM budget (`MAX_LLM_TRIAGES_PER_RUN`, default 6 per `LLM_RUN_BUDGET_WINDOW_S` = 24 h) does not trust the client's `retry_count`.
-  3. One Google ADK `InMemoryRunner` session (async API) against Vertex AI with structured `ActionDirective` output. It runs under a `VERTEX_TIMEOUT_S` deadline (default 60 s, below the HPC client's 100 s) and retries transient Vertex errors (429/5xx) up to `VERTEX_MAX_ATTEMPTS` (default 2) within that deadline. The telemetry is presented to the model as untrusted data.
+  3. One Google ADK `InMemoryRunner` session (async API) against the Gemini Enterprise Agent Platform with structured `ActionDirective` output. It runs under a `VERTEX_TIMEOUT_S` deadline (default 60 s, below the HPC client's 100 s) and retries transient model errors (429/5xx) up to `VERTEX_MAX_ATTEMPTS` (default 2) within that deadline. The telemetry is presented to the model as untrusted data.
   4. **Parameter and runbook verification** on the model output:
      - the failure type's runbook action policy (`okf/manifest.yaml` `allowed_actions`; `resubmit_walltime` is never accepted);
      - allowlisted parameters within `[min, max]`;
@@ -27,8 +27,8 @@ Every response carries `X-Request-Id`: the client's value if well-formed, otherw
 
 | Variable | Default | Notes |
 | :--- | :--- | :--- |
-| `MODEL_ID` | `gemini-4-argon` | Vertex AI Gemini model id (GA on Vertex AI, `global` endpoint; `gemini-3.8-flash` is an optional lower-cost override), validated at startup: bare `gemini-*` id, `publishers/google/models/<id>`, or a full `projects/.../locations/.../(publishers/google/models/<id>\|endpoints/<n>)` name. |
-| `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` | project from ADC, `global` | The service always uses Vertex AI (ADC); it never uses API keys. |
+| `MODEL_ID` | `gemini-4-argon` | Gemini Enterprise Agent Platform model id (GA on `global` endpoint; `gemini-3.8-flash` is an optional lower-cost override), validated at startup: bare `gemini-*` id, `publishers/google/models/<id>`, or a full `projects/.../locations/.../(publishers/google/models/<id>\|endpoints/<n>)` name. |
+| `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` | project from ADC, `global` | Always authenticates via Google Cloud ADC on the Gemini Enterprise Agent Platform; never uses API keys. |
 | `AURORA_STEER_BEARER_TOKEN` | (required) | Secret Manager token(s), comma-separated for rotation. Without it every protected endpoint returns 503. |
 | `VERTEX_TIMEOUT_S`, `VERTEX_MAX_ATTEMPTS` | `60`, `2` | Deadline must stay `<= 80` s: the HPC client's read timeout (100 s) minus the BigQuery audit write that follows. A timeout escalates to a human. |
 | `RATE_LIMIT_TRIAGE`, `RATE_LIMIT_EVENTS` | `120`, `5000` per 60 s | Per instance. |

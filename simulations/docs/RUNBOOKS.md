@@ -53,7 +53,7 @@ tacc-resolve --config config.json --run-id <run_id> --minutes 20 --note "Lowered
 Why a run was escalated is in `ISSUE.md` ("Escalation Reason") and in the aurora-steer logs:
 - `3-strike circuit breaker` / `Per-run LLM budget exhausted`: automated retries are used up.
 - `Guardrail rejected LLM directive: ...`: the model proposed something the runbook or the allowlist forbids (wrong action for the failure type, a non-allowlisted or out-of-bounds parameter, a grid or dissipation change on a warm restart, or a patch that changes nothing). The proposed directive is in the aurora-steer Cloud Logging entry `Guardrail rejected LLM directive`.
-- `LLM steering error (...)` / `LLM steering timed out`: Vertex AI was unavailable or returned malformed output. Check the aurora-steer `ERROR` logs (same `request_id`); a burst of these usually means a quota, IAM or `MODEL_ID` problem, not a physics problem.
+- `LLM steering error (...)` / `LLM steering timed out`: the Gemini Enterprise Agent Platform (`gemini-4-argon`) was unavailable or returned malformed output. Check the aurora-steer `ERROR` logs (same `request_id`); a burst of these usually means a quota, IAM or `MODEL_ID` problem, not a physics problem.
 
 ## 4. aurora-steer operations (Cloud Run)
 

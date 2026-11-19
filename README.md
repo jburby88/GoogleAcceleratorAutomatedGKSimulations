@@ -17,7 +17,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the dual-backend babysitt
 ```text
 GoogleAcceleratorAutomatedGKSimulations/
 ├── platform/
-│   ├── aurora-steer/      # Cloud Run FastAPI + Google ADK agent (Vertex AI Gemini); loads OKF skills by name
+│   ├── aurora-steer/      # Cloud Run FastAPI + Google ADK agent (Gemini Enterprise Agent Platform, gemini-4-argon); loads OKF skills by name
 │   ├── dashboard/         # Streamlit dashboard: BigQuery views, prod rows only (local DuckDB mode for inspection)
 │   ├── hpc-core/          # HPC client: Slurm backend, state, HTTPS client, telemetry outbox, dataset manifest
 │   ├── telemetry/         # BigQuery DDL (01_tables.sql) + 8 KPI/operational views (02_views.sql) + contract tests

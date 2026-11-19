@@ -14,7 +14,7 @@ flowchart TD
     end
 
     subgraph GCP_CTRL["GCP Control Plane (Cloud Run + BigQuery)"]
-        STEER["aurora-steer (Cloud Run + Vertex AI Gemini + OKF Skills)"]
+        STEER["aurora-steer (Cloud Run + Gemini Enterprise Agent Platform / gemini-4-argon + OKF Skills)"]
         BQ["BigQuery sim_babysitter_telemetry (8 SQL Views)"]
         DASH["Private Dashboard (Cloud Run + IAP, prod rows only)"]
         STEER -->|"insertAll (+ audit log sink)"| BQ
@@ -75,7 +75,7 @@ sequenceDiagram
     participant GCS as "Dataset & Queue ($WORK / GCS Bucket)"
     participant WD as "Watchdog (tacc-driver OR gcp-gx-babysitter)"
     participant EXEC as "Scheduler (TACC Slurm OR GCP Batch/GKE GPU & TPU)"
-    participant BRAIN as "aurora-steer (Cloud Run + Gemini)"
+    participant BRAIN as "aurora-steer (Cloud Run + gemini-4-argon)"
     participant KR1 as "KR1 Surrogate & Augmented Lagrangian"
 
     WD->>EXEC: Submit run (GENE/GX on TACC OR C++ GX GPU / GX-JAX TPU on GCP)

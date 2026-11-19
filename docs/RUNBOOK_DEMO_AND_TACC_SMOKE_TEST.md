@@ -1,7 +1,7 @@
 # Operator Runbook: GCP Deployment, TACC Login-Node Smoke Test & GPU Obtainability
 
 This runbook covers:
-1. **Stage 1**: deploy and verify the GCP stack: aurora-steer (Cloud Run + Vertex AI Gemini), BigQuery telemetry, GCS dataset bucket, containerized GX, private dashboard.
+1. **Stage 1**: deploy and verify the GCP stack: aurora-steer (Cloud Run + Gemini Enterprise Agent Platform, default `gemini-4-argon`), BigQuery telemetry, GCS dataset bucket, containerized GX, private dashboard.
 2. **Stage 2**: verify outbound HTTPS, authentication, telemetry ingestion and a live `/triage` round trip **from a TACC Vista or Lonestar6 login node**.
 3. **Stage 3**: GPU obtainability on GCP (Cloud Batch region rotation or GKE ComputeClasses).
 4. **Stage 4**: activate the TACC Slurm babysitter (`tacc-driver`).
@@ -34,7 +34,7 @@ ENABLE_DASHBOARD_IAP=true
 GCP_BATCH_CPU_ONLY=0
 ```
 
-`MODEL_ID` defaults to `gemini-4-argon`, a GA Vertex AI model; set `MODEL_ID=gemini-3.8-flash` for a lower-cost option. aurora-steer validates the ID at startup, and its `/healthz` startup probe keeps a broken revision from taking traffic.
+`MODEL_ID` defaults to `gemini-4-argon` on the Gemini Enterprise Agent Platform (`global` endpoint); set `MODEL_ID=gemini-3.8-flash` for a lower-cost option. aurora-steer validates the ID at startup, and its `/healthz` startup probe keeps a broken revision from taking traffic.
 
 ### 2. Deploy (`~10–40 min`; the first gx-runner build compiles GX)
 
@@ -90,7 +90,7 @@ From the workstation, `make tacc-smoke-test` does the same. It reads the token f
 The test checks, in order:
 1. `GET /health` (note: Cloud Run's Google Front End reserves `/healthz` on external `*.run.app` URLs, so external probes use `/health` or `/v1/healthz` while the internal Cloud Run startup probe uses `/healthz`);
 2. an authenticated `POST /v1/events`;
-3. a `POST` triage call that must come back from the live LLM path. The response header `X-Aurora-Decision` must be `llm`; an escalation from a dead Vertex AI path fails the test.
+3. a `POST` triage call that must come back from the live LLM path. The response header `X-Aurora-Decision` must be `llm`; an escalation from a dead Gemini Enterprise Agent Platform path fails the test.
 
 Smoke-test events use `environment = preflight`. They are stored flagged synthetic and are **excluded from every KPI view and from the dashboard**, which shows production rows only. To confirm ingestion, query the raw table:
 
