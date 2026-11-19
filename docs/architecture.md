@@ -5,7 +5,7 @@
 ```mermaid
 flowchart TD
     subgraph EQ["Upstream 3D MHD Equilibria"]
-        MRX["ToBlick/mrx (3D Broken-Surface Equilibria projected to nested surfaces)"]
+        MRX["ToBlick/mrx (JAX 3D Broken-Surface Equilibria projected to nested surfaces)"]
     end
 
     subgraph GCP_CTRL["GCP Control Plane (Cloud Run + BigQuery)"]

@@ -16,7 +16,7 @@ Open-source platform (Apache-2.0) developed under the UT Austin / Google.org Imp
            (<2 KB JSON)         │                │  (<2 KB JSON)
     ┌───────────────────────────┴──┐          ┌──┴───────────────────────────┐
     │ Backend 1: TACC (tacc-driver)│          │ Backend 2: GCP (Cloud Batch) │
-    │ • GENE (Fortran) + TACC GX   │          │ • Containerized GX (GPU/TPU) │
+    │ • GENE (Fortran) + TACC GX   │          │ • C++ GX (GPU) / GX-JAX (TPU)│
     │ • Slurm (sbatch/squeue/sacct)│          │ • Spot L4 / TPU v6e & v5p    │
     │ • Dataset on $WORK           │          │ • GCS FUSE checkpoints       │
     └──────────────┬───────────────┘          └──────────────┬───────────────┘
@@ -25,7 +25,7 @@ Open-source platform (Apache-2.0) developed under the UT Austin / Google.org Imp
                                         ▼
     ┌────────────────────────┐   ┌──────────────────────────────────────┐
     │ Upstream Equilibria:   │   │  Dataset (TACC $WORK / GCS bucket)   │
-    │ ToBlick/mrx (3D MHD)   ├──►│  campaigns/<id>/equilibria/<eq_id>/  │
+    │ ToBlick/mrx (JAX MHD)  ├──►│  campaigns/<id>/equilibria/<eq_id>/  │
     │ (projected geometries) │   │  campaigns/<id>/runs/<run_id>/       │
     └────────────────────────┘   └──────────────────┬───────────────────┘
                                                     ▼
