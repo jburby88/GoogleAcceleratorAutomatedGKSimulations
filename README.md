@@ -109,9 +109,12 @@ export AURORA_STEER_BEARER_TOKEN="<token>"
 
 For unattended runs from cron, pinned to one login node with a lock, see [`simulations/hpc/README.md`](simulations/hpc/README.md).
 
-### 3. Containerized GX on GCP Cloud Batch
+### 3. Containerized GX on GCP Cloud Batch & GKE (GPU & TPU)
 
-After `make gcp-deploy`, Cloud Scheduler starts the `gcp-gx-babysitter` Cloud Run job every 2 minutes. The job processes runs queued under `gs://<project>-gk-dataset/queue/pending/`. GPU jobs need GPU quota. `GCP_BATCH_CPU_ONLY=1` is a CPU-only smoke-test mode that runs as `environment=sim`, so it never enters KPIs or the dataset.
+After `make gcp-deploy`, Cloud Scheduler starts the `gcp-gx-babysitter` Cloud Run job every 2 minutes. The job processes runs queued under `gs://<project>-gk-dataset/queue/pending/` using either:
+
+- **C++ `GX` on GPUs** (`ACCELERATOR_FAMILY=gpu`, default): Spot NVIDIA L4 / opt-in A100 (`simulations/gcp/`). `GCP_BATCH_CPU_ONLY=1` is a CPU-only smoke-test mode that runs as `environment=sim`, so it never enters KPIs or the dataset.
+- **`GX-JAX` on Cloud TPUs** (`ACCELERATOR_FAMILY=tpu`): Spot TPU `v6e` / `v5p` JAX/XLA port (`simulations/gx-jax/`). See **[`simulations/gx-jax/BENCHMARKS.md`](simulations/gx-jax/BENCHMARKS.md)** for full Cloud TPU physics parity results, step-time benchmarks vs. upstream C++/CUDA `GX`, 3D W7-X stellarator runs, and `jax.vmap` multi-surface sweep throughput.
 
 ---
 
@@ -128,4 +131,4 @@ make coverage       # make test with coverage
 
 CI runs linting and hermetic tests across Python 3.11–3.13 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Deployments can be triggered via GitHub Actions ([`.github/workflows/deploy-cloudrun.yml`](.github/workflows/deploy-cloudrun.yml)) or locally via `make gcp-deploy`.
 
-See also [`docs/architecture.md`](docs/architecture.md), [`docs/OKR_MAP.md`](docs/OKR_MAP.md), [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), and [`simulations/docs/OPEN_QUESTIONS.md`](simulations/docs/OPEN_QUESTIONS.md).
+See also [`docs/architecture.md`](docs/architecture.md), [`simulations/gx-jax/BENCHMARKS.md`](simulations/gx-jax/BENCHMARKS.md), [`docs/OKR_MAP.md`](docs/OKR_MAP.md), [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), and [`simulations/docs/OPEN_QUESTIONS.md`](simulations/docs/OPEN_QUESTIONS.md).
