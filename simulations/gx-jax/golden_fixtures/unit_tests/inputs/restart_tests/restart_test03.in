@@ -1,0 +1,84 @@
+&gx
+ debug = F 
+ scheme = "k10"
+
+ ntheta = 32
+ nperiod = 3
+ ny = 20
+ nx = 1
+ y0 = 20.0 
+ boundary = "linked"
+ forcing_amp = 0.
+ forcing_index = 31  ! 3 * 4 + 1
+ forcing_init = F
+ 
+ nhermite = 16
+ nlaguerre = 8
+ closure_model = "none"
+ smith_par_q = 2
+ smith_perp_q = 3
+ 
+ dt = 0.01
+ nstep  = 20000
+ nwrite = 2000
+ navg   = 100
+ nsave  = 100000
+
+ beta = 0. 
+ TiTe = 1.0
+
+ igeo = 0,     rhoc = 0.18,  eps = 0.18,   shat = 0.8
+ Rmaj = 1.0,   shift = 0.0,  qinp = 1.44,
+ akappa = 1.0, akappri = 0.0, tri = 0.,   tripri = 0.
+
+ slab = F,     const_curv = F
+
+ nonlinear_mode = F 
+ cfl = 0.5 
+
+ nspecies = 1
+
+ kpar_init = 0.
+ write_fluxes = F
+ write_omega  = T
+ write_phi    = T
+
+ write_lh_spectrum = T
+ write_h_spectrum  = T
+ write_l_spectrum  = T
+ write_spec_v_time = T
+
+ write_phi_kpar = F
+ write_moms = T
+ write_rh = F
+ restart = F
+ restart_to_file = "restart_test03.out.nc"
+ save_for_restart = T
+ init_field = "upar"
+
+ init_amp = 1.
+ iphi00 = 2  
+/
+
+&species_parameters_1
+ z = 1.0 
+ mass = 1.0 
+ dens = 1. 
+ temp = 1.0 
+ tprim = 6.9
+ fprim = 2.2 
+ vnewk = 0. 
+ type = "ion" 
+/
+
+&species_parameters_2
+ z = -1.0 
+ mass = 2.7e-4
+ dens = 1. 
+ temp = 1.0 
+ tprim = 6.9
+ fprim = 2.2 
+ vnewk = 0. 
+ type = "electron" 
+/
+

@@ -1,0 +1,79 @@
+ debug = false
+
+[Restart]
+ restart            = false
+ restart_from_file  = "none.nc"
+ 
+ save_for_restart   = true
+ restart_to_file    = "kh01_restart.nc"
+
+[Controls]
+ scheme = "k10" 
+ closure_model = "none"
+ nonlinear_mode = false 
+ cfl = 1.0
+ kpar_init = 0.0
+ init_field = "density"
+ init_amp = 1.0
+ 
+[Dimensions]
+ ntheta    = 8
+ ny        = 4
+ nx        = 4
+ 
+ nhermite  = 8
+ nlaguerre = 3
+
+ nspecies  = 1
+ nperiod   = 1
+
+[Domain]
+ y0            = 10.0
+ x0            = 20.0
+ boundary      = "periodic"
+
+[Time]
+ dt     = 1.0
+ nstep  = 0
+ nwrite = 1
+ navg   = 1
+ nsave  = 100000
+
+[Geometry]
+ igeo       = 0
+ shat       = 1.0e-8
+ Rmaj       = 1.0
+ qinp       = 1.0
+ 
+ slab       = true
+ const_curv = false
+
+[Diagnostics]
+ fluxes      = false
+ omega       = false
+ free_energy = true
+ 
+[Expert]
+ init_single = true
+ iky_single = 1
+ ikx_single = 0
+
+[Boltzmann]
+ iphi00 = 2
+ tau_fac = 1.0
+
+[Forcing]
+ forcing_amp = 0.0
+ forcing_init = false
+ 
+# it is okay to have extra species data here; only the first nspecies elements of each item are used
+
+[species]
+ z     = [ 1.0,      -1.0     ]
+ mass  = [ 1.0,       2.7e-4  ]
+ dens  = [ 1.0,       1.0     ]
+ temp  = [ 1.0,       1.0     ]
+ tprim = [ 0.0,       0.0     ]
+ fprim = [ 0.0,       0.0     ]
+ vnewk = [ 0.0,       0.0     ]
+ type  = [ "ion",  "electron" ]

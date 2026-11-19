@@ -5,7 +5,7 @@
 -include .env
 
 .PHONY: help env-init install install-tacc check-tacc-deps lint lint-infra lint-terraform \
-	lint-shell lint-docker lint-workflows format test coverage dashboard docker-build \
+	lint-shell lint-docker lint-workflows format test test-gx-jax coverage dashboard docker-build \
 	gcp-init gcp-plan gcp-apply gcp-deploy tacc-smoke-test clean
 
 PYTHON ?= python3
@@ -23,9 +23,14 @@ TEST_DIRS := \
 	platform/telemetry/tests \
 	simulations/hpc/tests \
 	simulations/gcp/tests \
+	simulations/gx-jax/tests/test_grids_geo_laguerre.py \
+	simulations/gx-jax/tests/test_fields.py \
 	surrogates/tests \
 	scripts/tests \
 	tests/e2e
+
+# Full gx-jax physics, multi-device shard_map, golden NetCDF, and preemption suite (CPU-heavy).
+GX_JAX_TEST_DIR := simulations/gx-jax/tests
 
 # Hermetic tests: whatever is in .env or the developer's shell, the test suite never sees the
 # deployed aurora-steer URL, bearer tokens, BigQuery streaming, webhooks or runtime overrides.
@@ -41,7 +46,7 @@ COV_PACKAGES := hpc_core tacc_exec gcp_exec app kr1_surrogate kr3_design gk_surr
 TF_DIR := platform/infra/terraform
 SHELL_SCRIPTS := scripts/deploy_gcp_demo.sh simulations/hpc/scripts/ensure_running_cron.sh
 DOCKERFILES := platform/aurora-steer/Dockerfile platform/dashboard/Dockerfile \
-	simulations/gcp/Dockerfile.gx-runner
+	simulations/gcp/Dockerfile.gx-runner simulations/gcp/Dockerfile.gx-jax-tpu
 TERRAFORM ?= terraform
 SHELLCHECK ?= shellcheck
 HADOLINT ?= hadolint
@@ -72,7 +77,8 @@ help:
 	@echo "  make check-tacc-deps  Check dependency boundaries, tracking parity, and repo safety"
 	@echo "  make lint             check-tacc-deps + ruff check + ruff format --check"
 	@echo "  make lint-infra       terraform fmt/validate, shellcheck, hadolint, actionlint (skips missing tools)"
-	@echo "  make test             All unit, contract and E2E tests in a hermetic environment"
+	@echo "  make test             All unit, contract and E2E tests in a hermetic environment (includes core gx-jax)"
+	@echo "  make test-gx-jax      Full gx-jax physics, multi-device sharding, and golden NetCDF test suite"
 	@echo "  make coverage         make test with a pytest-cov report"
 	@echo "  make dashboard        Run the Streamlit dashboard locally against BigQuery"
 	@echo ""
@@ -81,7 +87,7 @@ help:
 	@echo "  make gcp-init         Create the Terraform state bucket if needed and run terraform init"
 	@echo "  make gcp-plan         terraform plan with the currently deployed images"
 	@echo "  make gcp-apply        terraform apply with the currently deployed images"
-	@echo "  make docker-build     Build the three images locally (tag IMAGE_TAG=$(IMAGE_TAG), not pushed)"
+	@echo "  make docker-build     Build the container images locally (tag IMAGE_TAG=$(IMAGE_TAG), not pushed)"
 	@echo "  make tacc-smoke-test  Check HTTPS, /v1/events and /triage against aurora-steer"
 	@echo "  make clean            Remove local Python caches (never touches .env or Terraform files)"
 
@@ -96,6 +102,7 @@ install:
 		-e "./platform/aurora-steer[dev]" \
 		-e "./simulations/hpc[dev]" \
 		-e "./simulations/gcp[dev]" \
+		-e "./simulations/gx-jax[dev]" \
 		-e "./platform/dashboard[dev]" \
 		-e "./surrogates[dev]" \
 		"pytest-cov>=5,<8"
@@ -144,6 +151,9 @@ format:
 test: check-tacc-deps
 	$(TEST_ENV) $(VENV_PY) -m pytest $(PYTEST_ARGS) $(TEST_DIRS)
 
+test-gx-jax: check-tacc-deps
+	$(TEST_ENV) $(VENV_PY) -m pytest $(PYTEST_ARGS) $(GX_JAX_TEST_DIR)
+
 coverage:
 	$(TEST_ENV) $(VENV_PY) -m pytest $(PYTEST_ARGS) $(foreach p,$(COV_PACKAGES),--cov=$(p)) \
 		--cov-report=term-missing $(TEST_DIRS)
@@ -158,6 +168,7 @@ docker-build:
 	docker build -f platform/aurora-steer/Dockerfile -t "aurora-steer:$(IMAGE_TAG)" .
 	docker build -f platform/dashboard/Dockerfile -t "aurora-dashboard:$(IMAGE_TAG)" .
 	docker build --build-arg GX_COMMIT="$(GX_COMMIT)" -f simulations/gcp/Dockerfile.gx-runner -t "gx-runner:$(IMAGE_TAG)" .
+	docker build --build-arg GX_COMMIT="$(GX_COMMIT)" -f simulations/gcp/Dockerfile.gx-jax-tpu -t "gx-jax-tpu:$(IMAGE_TAG)" .
 
 gcp-init:
 	./scripts/deploy_gcp_demo.sh init

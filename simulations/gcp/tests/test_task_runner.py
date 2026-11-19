@@ -32,7 +32,22 @@ UNDEF = 0xFFFFFFFFFFFFFFFF
 
 
 def hdf5_bytes(total: int, *, eof: int | None = None, version: int = 0, flags: int = 0) -> bytes:
-    """Minimal HDF5 superblock (v0 or v2/v3) padded to `total` bytes."""
+    """Minimal HDF5/NetCDF4 bytes padded to `total` bytes (real NetCDF4 when `eof` is valid)."""
+    if eof is None and version == 0 and flags == 0:
+        try:
+            import tempfile
+
+            import netCDF4  # type: ignore[import-not-found]
+
+            with tempfile.NamedTemporaryFile(suffix=".nc") as tmp:
+                with netCDF4.Dataset(tmp.name, "w") as ds:
+                    ds.createDimension("t", 1)
+                    ds.createVariable("time", "f8", ("t",))[:] = [1.0]
+                    ds.createVariable("G", "f4", ("t",))[:] = [0.0]
+                raw = Path(tmp.name).read_bytes()
+            return raw + b"\0" * max(0, total - len(raw))
+        except (ImportError, AttributeError):
+            pass
     sig = b"\x89HDF\r\n\x1a\n"
     end = total if eof is None else eof
     if version == 0:
@@ -46,9 +61,21 @@ def hdf5_bytes(total: int, *, eof: int | None = None, version: int = 0, flags: i
 
 FAKE_GX = textwrap.dedent(
     """
-    import json, os, struct, sys, time
+    import json, os, pathlib, struct, sys, tempfile, time
     UNDEF = 0xFFFFFFFFFFFFFFFF
     def hdf5(total, eof=None):
+        if eof is None:
+            try:
+                import netCDF4
+                with tempfile.NamedTemporaryFile(suffix=".nc") as tmp:
+                    with netCDF4.Dataset(tmp.name, "w") as ds:
+                        ds.createDimension("t", 1)
+                        ds.createVariable("time", "f8", ("t",))[:] = [1.0]
+                        ds.createVariable("G", "f4", ("t",))[:] = [0.0]
+                    raw = pathlib.Path(tmp.name).read_bytes()
+                return raw + b"\\0" * max(0, total - len(raw))
+            except ImportError:
+                pass
         sig = b"\\x89HDF\\r\\n\\x1a\\n"
         end = total if eof is None else eof
         head = sig + bytes([0, 0, 0, 0, 0, 8, 8, 0]) + struct.pack("<HHI", 4, 16, 0)
@@ -133,10 +160,10 @@ def result(src: Path) -> dict:
 def test_checkpoint_validator_detects_truncated_and_open_files(tmp_path: Path) -> None:
     good = tmp_path / "good.nc"
     good.write_bytes(hdf5_bytes(4096))
-    assert netcdf_file_problem(good) is None
+    assert netcdf_file_problem(good, deep=False) is None
     v2 = tmp_path / "v2.nc"
     v2.write_bytes(hdf5_bytes(2048, version=2))
-    assert netcdf_file_problem(v2) is None
+    assert netcdf_file_problem(v2, deep=False) is None
     truncated = tmp_path / "trunc.nc"
     truncated.write_bytes(hdf5_bytes(1024, eof=8192))
     assert "truncated" in (netcdf_file_problem(truncated) or "")
@@ -148,7 +175,7 @@ def test_checkpoint_validator_detects_truncated_and_open_files(tmp_path: Path) -
     assert netcdf_file_problem(undefined) is not None
     classic = tmp_path / "classic.nc"
     classic.write_bytes(b"CDF\x02" + b"\0" * 60)
-    assert netcdf_file_problem(classic) is None
+    assert netcdf_file_problem(classic, deep=False) is None
     empty = tmp_path / "empty.nc"
     empty.write_bytes(b"")
     assert netcdf_file_problem(empty) == "empty file"
@@ -256,9 +283,9 @@ def test_new_checkpoint_rotates_previous_generation(tmp_path: Path) -> None:
     src = make_run(tmp_path)
     old = hdf5_bytes(3000)
     (src / "gx.restart.nc").write_bytes(old)
-    plan = {"steps": [["write", "gx.restart.nc", 5000]], "rc": 0}
+    plan = {"steps": [["write", "gx.restart.nc", 16384]], "rc": 0}
     assert TaskRunner(make_cfg(tmp_path, src, plan)).run() == 0
-    assert (src / "gx.restart.nc").stat().st_size == 5000
+    assert (src / "gx.restart.nc").stat().st_size == 16384
     assert (src / "gx.prev.restart.nc").read_bytes() == old
 
 

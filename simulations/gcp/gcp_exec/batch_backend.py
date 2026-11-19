@@ -375,12 +375,19 @@ class CloudBatchBackend:
         network: str | None = None,
         subnetwork: str | None = None,
         no_external_ip: bool = True,
+        accelerator_family: str = "gpu",
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.project_id = project_id
         self.region = region
         self.candidate_regions = list(candidate_regions) if candidate_regions else None
+        family = (accelerator_family or "gpu").strip().lower()
+        if family not in ("gpu", "tpu"):
+            raise ValueError(
+                f"accelerator_family must be 'gpu' or 'tpu', got {accelerator_family!r}"
+            )
+        self.accelerator_family = family
         (
             self.network,
             self.subnetwork,
@@ -427,7 +434,7 @@ class CloudBatchBackend:
             backend_name="gcp_batch",
             supports_gene=False,
             supports_gx=True,
-            default_gpu_tier="l4",
+            default_gpu_tier="v6e-4" if self.accelerator_family == "tpu" else "l4",
             supports_spot_continuation=True,
             idempotent_submit=True,
         )
@@ -556,12 +563,16 @@ class CloudBatchBackend:
             cpu_only=self.cpu_only,
             allow_on_demand=self.allow_on_demand,
             allow_a100_fallback=self.allow_a100_fallback,
+            accelerator_family=self.accelerator_family,
         )
         sub_id = submission_id or adhoc_submission_id(run_dir.name, retry_count)
         job_id = job_id_for_submission(sub_id)
         container_workdir = self._container_workdir(run_dir)
 
-        has_gpu = gpu_spec.accelerator_count > 0 and bool(gpu_spec.accelerator_type)
+        is_tpu = gpu_spec.accelerator_family == "tpu"
+        has_gpu = (
+            (not is_tpu) and gpu_spec.accelerator_count > 0 and bool(gpu_spec.accelerator_type)
+        )
         instance_policy: dict[str, Any] = {
             "machineType": gpu_spec.machine_type,
             "provisioningModel": provisioning_model,
@@ -574,6 +585,7 @@ class CloudBatchBackend:
         labels = {
             "workstream": "kr2-gk-database",
             "solver": "gx",
+            "accelerator_family": label_value(gpu_spec.accelerator_family),
             "environment": label_value(self.environment),
             "gpu_tier": gpu_spec.tier_name,
             "provisioning": provisioning_model.lower(),
@@ -589,6 +601,41 @@ class CloudBatchBackend:
         if self.gcs_mount_options:
             volume["mountOptions"] = list(self.gcs_mount_options)
 
+        env_vars: dict[str, str] = {
+            "HDF5_USE_FILE_LOCKING": "FALSE",
+            "HOME": "/tmp",
+            "GK_ENVIRONMENT": self.environment,
+        }
+        container_spec: dict[str, Any] = {
+            "imageUri": self.gx_container_image,
+            "entrypoint": "gx-task",
+            "commands": [
+                "--src-dir",
+                container_workdir,
+                "--attempt-id",
+                job_id,
+                "--environment",
+                self.environment,
+            ],
+        }
+        if is_tpu:
+            # libtpu needs VFIO device access inside Cloud Batch TPU VM containers.
+            container_spec["options"] = "--privileged"
+            env_vars.update(
+                {
+                    "JAX_PLATFORMS": "tpu",
+                    "JAX_ENABLE_X64": "1",
+                    "JAX_DEFAULT_MATMUL_PRECISION": "highest",
+                }
+            )
+
+        instance_entry: dict[str, Any] = {
+            "installGpuDrivers": has_gpu,
+            "policy": instance_policy,
+        }
+        if is_tpu:
+            instance_entry["installOpsAgent"] = False
+
         job_body: dict[str, Any] = {
             "taskGroups": [
                 {
@@ -603,32 +650,15 @@ class CloudBatchBackend:
                         "volumes": [volume],
                         "runnables": [
                             {
-                                "environment": {
-                                    "variables": {
-                                        "HDF5_USE_FILE_LOCKING": "FALSE",
-                                        "HOME": "/tmp",
-                                        "GK_ENVIRONMENT": self.environment,
-                                    }
-                                },
-                                "container": {
-                                    "imageUri": self.gx_container_image,
-                                    "entrypoint": "gx-task",
-                                    "commands": [
-                                        "--src-dir",
-                                        container_workdir,
-                                        "--attempt-id",
-                                        job_id,
-                                        "--environment",
-                                        self.environment,
-                                    ],
-                                },
+                                "environment": {"variables": env_vars},
+                                "container": container_spec,
                             }
                         ],
                     },
                 }
             ],
             "allocationPolicy": {
-                "instances": [{"installGpuDrivers": has_gpu, "policy": instance_policy}],
+                "instances": [instance_entry],
                 "serviceAccount": {"email": self.worker_service_account_email},
                 # Propagated to the VMs, disks and GPUs for per-run cost attribution.
                 "labels": dict(labels),

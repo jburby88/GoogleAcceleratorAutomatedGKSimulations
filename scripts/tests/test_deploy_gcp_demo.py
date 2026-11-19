@@ -92,6 +92,7 @@ case "$2" in
       gcp_batch_worker_service_account) printf 'gx-batch-worker-sa@%s.iam.gserviceaccount.com' "$proj" ;;
       vpc_network) printf 'projects/%s/global/networks/%s-vpc' "$proj" "$net_pfx" ;;
       vpc_subnetwork) printf 'projects/%s/regions/%s/subnetworks/%s-subnet' "$proj" "$reg" "$net_pfx" ;;
+      artifact_registry_repository) printf '%s-docker.pkg.dev/%s/aurora-platform' "$reg" "$proj" ;;
     esac ;;
 esac
 """
@@ -362,3 +363,14 @@ def test_deploy_uses_cloud_build_when_docker_absent(sandbox: dict[str, Path]) ->
             f"{repo}/gx-runner:abc123-gx{GX_COMMIT[:12]}",
         ]
     )
+
+
+def test_deploy_populates_tpu_image_and_builds_tpu_on_opt_in(sandbox: dict[str, Path]) -> None:
+    proc = _run(sandbox, ACCELERATOR_FAMILY="tpu")
+    assert proc.returncode == 0, proc.stderr
+    registry = (sandbox["state"] / "registry").read_text().split()
+    repo = f"us-central1-docker.pkg.dev/{PROJECT}/aurora-platform"
+    assert f"{repo}/gx-jax-tpu:abc123-gx{GX_COMMIT[:12]}" in registry
+    cfg = json.loads((sandbox["state"] / "uploaded_config.json").read_text())
+    assert cfg["accelerator_family"] == "tpu"
+    assert cfg["gx_tpu_container_image"].startswith(f"{repo}/gx-jax-tpu@sha256:")

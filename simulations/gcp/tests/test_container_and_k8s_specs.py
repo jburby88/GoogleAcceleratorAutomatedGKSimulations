@@ -470,12 +470,18 @@ def test_pip_installs_are_exactly_pinned_and_resolve_nothing(
 
 # --------------------------------------------------------------------------- compute classes
 
-DEFAULT_CLASSES = ("gx-gpu-obtainable", "gx-gpu-l4-or-a100", "gx-gpu-highmem", "gx-cpu")
+DEFAULT_GPU_CLASSES = ("gx-gpu-obtainable", "gx-gpu-l4-or-a100", "gx-gpu-highmem", "gx-cpu")
+DEFAULT_TPU_CLASSES = ("gx-tpu-v6e", "gx-tpu-v5p")
+DEFAULT_CLASSES = DEFAULT_GPU_CLASSES + DEFAULT_TPU_CLASSES
 GPU_FOR_FAMILY: dict[str, str | None] = {
     "g2": "nvidia-l4",
     "n1": "nvidia-tesla-t4",
     "a2": "nvidia-tesla-a100",
     "e2": None,
+}
+TPU_SLICE_SPECS: dict[str, tuple[set[int], set[str]]] = {
+    "tpu-v6e-slice": ({4, 8}, {"2x2", "2x4"}),
+    "tpu-v5p-slice": ({4}, {"2x2x1"}),
 }
 
 
@@ -505,6 +511,16 @@ def test_compute_classes_follow_the_gke_computeclass_schema(
         assert spec["whenUnsatisfiable"] == "DoNotScaleUp", name
         assert isinstance(spec["priorities"], list) and spec["priorities"], name
         for rule in spec["priorities"]:
+            if "tpu" in rule:
+                assert set(rule) == {"tpu", "spot"}, (name, rule)
+                assert isinstance(rule["spot"], bool), (name, rule)
+                tpu = rule["tpu"]
+                assert set(tpu) == {"type", "count", "topology"}, (name, rule)
+                assert tpu["type"] in TPU_SLICE_SPECS, (name, rule)
+                valid_counts, valid_topos = TPU_SLICE_SPECS[tpu["type"]]
+                assert tpu["count"] in valid_counts, (name, rule)
+                assert tpu["topology"] in valid_topos, (name, rule)
+                continue
             assert set(rule) <= {"machineFamily", "gpu", "spot", "flexStart"}, (name, rule)
             # Exactly one provisioning model per rule; flex-start cannot be combined with spot.
             assert ("spot" in rule) != ("flexStart" in rule), (name, rule)
@@ -565,3 +581,12 @@ def test_gpu_classes_respect_vram_tiers(compute_classes: dict[str, dict[str, Any
         assert gpu_types(f"gx-gpu-l4-or-a100{suffix}") == {"nvidia-l4", "nvidia-tesla-a100"}
         assert gpu_types(f"gx-gpu-highmem{suffix}") == {"nvidia-tesla-a100"}
         assert gpu_types(f"gx-cpu{suffix}") == set()
+
+
+def test_tpu_dockerfile_enforces_provenance_hlo_check_and_non_root() -> None:
+    text = (GCP_DIR / "Dockerfile.gx-jax-tpu").read_text(encoding="utf-8")
+    assert "ARG GX_COMMIT" in text
+    assert "GX_BUILD_INFO=/opt/gx/gx_build.json" in text
+    assert "python3 -m gx_jax._verify_fp32_hlo" in text
+    assert "USER 10001:10001" in text
+    assert 'ENTRYPOINT ["gcp-gx-babysitter"]' in text

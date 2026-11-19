@@ -38,6 +38,7 @@ from gcp_exec.gpu_selector import (
     T4_SAFE_VRAM_CEILING_GB,
     estimate_gx_vram_gb,
     select_gpu_tier,
+    select_tpu_tier,
 )
 from gcp_exec.submission import (
     CancelRegistry,
@@ -68,6 +69,8 @@ DEFAULT_COMPUTE_CLASS = "gx-gpu-obtainable"
 MEDIUM_VRAM_COMPUTE_CLASS = "gx-gpu-l4-or-a100"
 HIGHMEM_COMPUTE_CLASS = "gx-gpu-highmem"
 CPU_FALLBACK_COMPUTE_CLASS = "gx-cpu"
+TPU_V6E_COMPUTE_CLASS = "gx-tpu-v6e"
+TPU_V5P_COMPUTE_CLASS = "gx-tpu-v5p"
 ON_DEMAND_SUFFIX = "-ondemand"
 
 RUNNER_UID = 10001  # non-root `gx` user of Dockerfile.gx-runner
@@ -243,6 +246,9 @@ class GKEComputeClassBackend:
         compute_class_medium_vram: str = MEDIUM_VRAM_COMPUTE_CLASS,
         compute_class_highmem: str = HIGHMEM_COMPUTE_CLASS,
         compute_class_cpu: str = CPU_FALLBACK_COMPUTE_CLASS,
+        compute_class_tpu_v6e: str = TPU_V6E_COMPUTE_CLASS,
+        compute_class_tpu_v5p: str = TPU_V5P_COMPUTE_CLASS,
+        accelerator_family: str = "gpu",
         ksa_name: str = "gx-runner-ksa",
         cpu_only: bool = False,
         max_run_duration_s: int = 28800,
@@ -267,6 +273,14 @@ class GKEComputeClassBackend:
         self.compute_class_medium_vram = compute_class_medium_vram
         self.compute_class_highmem = compute_class_highmem
         self.compute_class_cpu = compute_class_cpu
+        self.compute_class_tpu_v6e = compute_class_tpu_v6e
+        self.compute_class_tpu_v5p = compute_class_tpu_v5p
+        family = (accelerator_family or "gpu").strip().lower()
+        if family not in ("gpu", "tpu"):
+            raise ValueError(
+                f"accelerator_family must be 'gpu' or 'tpu', got {accelerator_family!r}"
+            )
+        self.accelerator_family = family
         self.ksa_name = ksa_name
         self.cpu_only = bool(cpu_only)
         self.max_run_duration_s = int(max_run_duration_s)
@@ -308,13 +322,16 @@ class GKEComputeClassBackend:
         *,
         force_high_memory: bool = False,
     ) -> tuple[str, str, int]:
-        """Return `(compute_class_name, gpu_tier_label, gpu_count)`.
+        """Return `(compute_class_name, accelerator_tier_label, accelerator_count)`."""
+        if self.accelerator_family == "tpu":
+            tpu_spec = select_tpu_tier(parameters=parameters, force_high_memory=force_high_memory)
+            compute_class = (
+                self.compute_class_tpu_v5p
+                if tpu_spec.tier_name == "v5p-8"
+                else self.compute_class_tpu_v6e
+            )
+            return self._with_tier(compute_class), tpu_spec.tier_name, tpu_spec.accelerator_count
 
-        - `<= 13.5 GB` VRAM -> `gx-gpu-obtainable` (Spot L4 -> Spot T4)
-        - `13.5 < VRAM <= 20.0 GB` -> `gx-gpu-l4-or-a100` (excludes the 16 GB T4)
-        - `> 20.0 GB` or `force_high_memory` -> `gx-gpu-highmem` (Spot A100)
-        With `allow_on_demand=True` the `-ondemand` variant of each class is used.
-        """
         gpu_spec = select_gpu_tier(
             parameters=parameters,
             force_high_memory=force_high_memory,
@@ -364,18 +381,32 @@ class GKEComputeClassBackend:
             except (OSError, ValueError, AttributeError):
                 meta_force_a100 = False
 
-        compute_class, tier_label, gpu_count = self.select_compute_class(
+        compute_class, tier_label, accelerator_count = self.select_compute_class(
             parameters=parameters,
             force_high_memory=(force_high_memory or meta_force_a100),
         )
         sub_id = submission_id or adhoc_submission_id(run_dir.name, retry_count)
         job_name = job_id_for_submission(sub_id)
         container_workdir = self._container_workdir(run_dir)
+        is_tpu = self.accelerator_family == "tpu"
 
-        resources: dict[str, Any] = {
-            "requests": {"cpu": "4", "memory": "16Gi"},
-            "limits": {"memory": "24Gi" if tier_label != "a100" else "40Gi"},
-        }
+        if is_tpu:
+            resources: dict[str, Any] = {
+                "requests": {
+                    "cpu": "8",
+                    "memory": "32Gi",
+                    "google.com/tpu": str(accelerator_count),
+                },
+                "limits": {
+                    "memory": "256Gi" if tier_label == "v5p-8" else "128Gi",
+                    "google.com/tpu": str(accelerator_count),
+                },
+            }
+        else:
+            resources = {
+                "requests": {"cpu": "4", "memory": "16Gi"},
+                "limits": {"memory": "24Gi" if tier_label != "a100" else "40Gi"},
+            }
         tolerations: list[dict[str, Any]] = [
             # GKE taints auto-created compute-class nodes; GKE usually injects these, but an
             # explicit toleration keeps the pod schedulable if that admission step is absent.
@@ -387,9 +418,13 @@ class GKEComputeClassBackend:
             },
             {"key": "cloud.google.com/gke-spot", "operator": "Exists", "effect": "NoSchedule"},
         ]
-        if gpu_count > 0:
-            resources["requests"]["nvidia.com/gpu"] = str(gpu_count)
-            resources["limits"]["nvidia.com/gpu"] = str(gpu_count)
+        if is_tpu:
+            tolerations.append(
+                {"key": "google.com/tpu", "operator": "Exists", "effect": "NoSchedule"}
+            )
+        elif accelerator_count > 0:
+            resources["requests"]["nvidia.com/gpu"] = str(accelerator_count)
+            resources["limits"]["nvidia.com/gpu"] = str(accelerator_count)
             tolerations.append(
                 {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}
             )
@@ -397,12 +432,26 @@ class GKEComputeClassBackend:
         labels = {
             "workstream": "kr2-gk-database",
             "solver": "gx",
+            "accelerator_family": self.accelerator_family,
             "environment": label_value(self.environment),
             "gpu_tier": tier_label,
             "compute_class": compute_class,
             "run_key": run_key(run_dir.name),
             "submission_key": submission_key(sub_id),
         }
+        container_env = [
+            {"name": "HDF5_USE_FILE_LOCKING", "value": "FALSE"},
+            {"name": "HOME", "value": "/tmp"},
+            {"name": "GK_ENVIRONMENT", "value": self.environment},
+        ]
+        if is_tpu:
+            container_env.extend(
+                [
+                    {"name": "JAX_PLATFORMS", "value": "tpu"},
+                    {"name": "JAX_ENABLE_X64", "value": "1"},
+                    {"name": "JAX_DEFAULT_MATMUL_PRECISION", "value": "highest"},
+                ]
+            )
 
         job_manifest: dict[str, Any] = {
             "apiVersion": "batch/v1",
@@ -461,11 +510,7 @@ class GKEComputeClassBackend:
                                     "--environment",
                                     self.environment,
                                 ],
-                                "env": [
-                                    {"name": "HDF5_USE_FILE_LOCKING", "value": "FALSE"},
-                                    {"name": "HOME", "value": "/tmp"},
-                                    {"name": "GK_ENVIRONMENT", "value": self.environment},
-                                ],
+                                "env": container_env,
                                 "resources": resources,
                                 "securityContext": {
                                     "allowPrivilegeEscalation": False,

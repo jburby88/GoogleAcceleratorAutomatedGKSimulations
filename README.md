@@ -16,8 +16,8 @@ Open-source platform (Apache-2.0) developed under the UT Austin / Google.org AI 
            (<2 KB JSON)         │                │  (<2 KB JSON)
     ┌───────────────────────────┴──┐          ┌──┴───────────────────────────┐
     │ Backend 1: TACC (tacc-driver)│          │ Backend 2: GCP (Cloud Batch) │
-    │ • GENE (Fortran) + TACC GX   │          │ • Containerized GX on GPUs   │
-    │ • Slurm (sbatch/squeue/sacct)│          │ • Spot L4 by default         │
+    │ • GENE (Fortran) + TACC GX   │          │ • Containerized GX (GPU/TPU) │
+    │ • Slurm (sbatch/squeue/sacct)│          │ • Spot L4 / TPU v6e & v5p    │
     │ • Dataset on $WORK           │          │ • GCS FUSE checkpoints       │
     └──────────────┬───────────────┘          └──────────────┬───────────────┘
                    │  Dataset output                         │  Dataset output
@@ -50,7 +50,8 @@ GoogleAcceleratorAutomatedGKSimulations/
 ├── simulations/
 │   ├── skill/sim-babysitter/okf/  # OKF manifest + physics runbooks + parameter allowlist (edited by physics team)
 │   ├── hpc/                       # Backend 1 (TACC Slurm): watchdog, GENE/GX patchers, cron driver
-│   ├── gcp/                       # Backend 2 (GCP Cloud Batch / GKE): containerized GX
+│   ├── gcp/                       # Backend 2 (GCP Cloud Batch / GKE): containerized GX (GPU & TPU)
+│   ├── gx-jax/                    # JAX/XLA port of the GX stellarator flux-tube solver for Cloud TPUs, GPUs & CPUs
 │   └── docs/                      # OPEN_QUESTIONS.md, METRICS.md, COST_ESTIMATE.md, RUNBOOKS.md
 ├── surrogates/            # Leak-free dataset loader, augmented Lagrangian optimization, active learning hooks
 ├── docs/                  # Architecture, OKR map, implementation plan, operator runbook

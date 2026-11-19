@@ -464,3 +464,22 @@ def test_ledger_survives_unrelated_run_dirs(tmp_path: Path, batch_server: Any) -
 def test_gene_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="GX only"):
         _backend(lambda *_a: {}, tmp_path).submit(_run_dir(tmp_path), solver="GENE")
+
+
+def test_tpu_batch_payload_omits_gpu_drivers_and_enables_privileged_vfio(tmp_path: Path) -> None:
+    backend = _backend(lambda *_a: {}, tmp_path, accelerator_family="tpu")
+    run_dir = _run_dir(tmp_path)
+    job_id, spec, body = backend.build_job_spec(run_dir, parameters=SMALL)
+    assert spec.tier_name == "v6e-4"
+    assert job_id.startswith("gx-")
+    instance = body["allocationPolicy"]["instances"][0]
+    assert instance["installGpuDrivers"] is False
+    assert instance["installOpsAgent"] is False
+    assert instance["policy"]["machineType"] == "ct6e-standard-4t"
+    assert "accelerators" not in instance["policy"]
+    runnable = body["taskGroups"][0]["taskSpec"]["runnables"][0]
+    assert runnable["container"]["options"] == "--privileged"
+    assert runnable["environment"]["variables"]["JAX_PLATFORMS"] == "tpu"
+    assert runnable["environment"]["variables"]["JAX_ENABLE_X64"] == "1"
+    assert body["labels"]["accelerator_family"] == "tpu"
+    assert body["labels"]["gpu_tier"] == "v6e-4"

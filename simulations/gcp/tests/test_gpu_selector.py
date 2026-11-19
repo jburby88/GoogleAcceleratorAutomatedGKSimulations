@@ -8,6 +8,7 @@ from gcp_exec.gpu_selector import (
     ObtainabilityExhaustedError,
     obtainability_waterfall,
     select_obtainable_target,
+    select_tpu_tier,
 )
 
 SMALL = {"nx": 64, "ny": 32, "nz": 48}  # fits a T4
@@ -68,3 +69,28 @@ def test_g4_rtx_pro_6000_selection_and_fallback() -> None:
     )
     with_g4 = obtainability_waterfall(MEDIUM, candidate_regions=REGIONS, allow_g4_fallback=True)
     assert [s.tier_name for _, s, _ in with_g4] == ["l4"] * 3 + ["g4"] * 3
+
+
+def test_tpu_selection_and_obtainability_waterfall() -> None:
+    small_tpu = select_tpu_tier(SMALL)
+    assert (small_tpu.tier_name, small_tpu.machine_type, small_tpu.accelerator_family) == (
+        "v6e-4",
+        "ct6e-standard-4t",
+        "tpu",
+    )
+    assert select_tpu_tier(SMALL, tpu_chips=8).machine_type == "ct6e-standard-8t"
+    assert select_tpu_tier(SMALL, force_high_memory=True).machine_type == "ct5p-hightpu-4t"
+
+    steps = obtainability_waterfall(SMALL, candidate_regions=REGIONS, accelerator_family="tpu")
+    assert [s.tier_name for _, s, _ in steps] == ["v6e-4"] * 3 + ["v6e-8"] * 3 + ["v5p-8"] * 3
+    assert {p for _, _, p in steps} == {"SPOT"}
+
+    r, spec, prov = select_obtainable_target(
+        SMALL, rotation_index=4, candidate_regions=REGIONS, accelerator_family="tpu"
+    )
+    assert (r, spec.tier_name, spec.machine_type, prov) == (
+        "us-east4",
+        "v6e-8",
+        "ct6e-standard-8t",
+        "SPOT",
+    )

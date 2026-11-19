@@ -1,0 +1,60 @@
+# This test runs a linear kinetic Alfven wave calculation in slab geometry.
+
+ debug = false
+
+[Dimensions]
+ ntheta = 16		# number of points along field line (theta) per 2pi segment    
+ nperiod = 1		# number of 2pi segments along field line is 2*nperiod-1
+ nky = 2		# number of (de-aliased) fourier modes in y
+ nkx = 1		# number of (de-aliased) fourier modes in x
+
+ nhermite = 64		# number of hermite moments (v_parallel resolution)
+ nlaguerre = 16		# number of laguerre moments (mu B resolution)
+ nspecies = 2		# number of evolved kinetic species
+
+[Domain]
+ y0 = 100.0		# controls box length in y (in units of rho_ref) and minimum ky, so that ky_min*rho_ref = 1/y0 
+ boundary = "linked"	# use twist-shift boundary conditions along field line
+
+[Physics]
+ beta = 0.010892340441486	# reference normalized pressure, beta = n_ref T_ref / ( B_ref^2 / (8 pi)). this value corresponds to beta_hat = (beta_e/2)*(mi/me) = 10
+ nonlinear_mode = false         # this is a linear calculation
+
+[Time]
+ t_max = 1.25           # end time (in units of L_ref/vt_ref)
+ scheme = "sspx3"       # use SSPx3 timestepping scheme (with adaptive timestepping)
+
+[Initialization]
+ ikpar_init = 1                  # parallel wavenumber of initial perturbation
+ init_field = "density"          # initial condition set in density
+ init_amp = 1.0e-10              # amplitude of initial condition
+ init_electrons_only = true      # only set up initial pertubation in electrons
+
+[Geometry]
+ geo_option = "slab"    # use slab geometry
+ shat = 1.0e-8          # magnetic shear
+
+# it is okay to have extra species data here; only the first nspecies elements of each item are used
+
+[species]
+ z     = [ 1.0,      -1.0     ]         # charge (normalized to Z_ref)
+ mass  = [ 1.0,       5.447e-4 ]        # mass (normalized to m_ref)
+ dens  = [ 1.0,       1.0     ]         # density (normalized to dens_ref)
+ temp  = [ 1.0,       1.0     ]         # temperature (normalized to T_ref)
+ tprim = [ 0.0,       0.0     ]         # temperature gradient, L_ref/L_T
+ fprim = [ 0.0,       0.0     ]         # density gradient, L_ref/L_n
+ vnewk = [ 0.0,       0.0     ]         # collision frequency
+ type  = [ "ion",  "electron" ]         # species type
+
+
+[Dissipation]
+ closure_model = "none"          # no closure assumptions (just truncation)
+ hypercollisions = true          # use hypercollision model
+ 
+[Diagnostics]
+ nwrite = 10                    # write diagnostics every nwrite timesteps
+ omega  = true                  # compute and write growth rates and frequencies
+ free_energy = true             # compute and write free energy spectra (Wg, Wphi, Phi**2)
+ fields = true                  # write fields on the grid
+ moments = true                 # write moments on the grid
+

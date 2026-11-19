@@ -177,3 +177,27 @@ def test_default_transport_uses_cluster_ca_and_raises_typed_errors(
     with pytest.raises(SchedulerApiError) as exc_info:
         gke._default_k8s_http_transport("POST", "https://kubernetes.default.svc/x", {})
     assert exc_info.value.status_code == 409
+
+
+def test_tpu_gke_pod_requests_tpu_resources_and_tolerations(tmp_path: Path) -> None:
+    gke = GKEComputeClassBackend(
+        gcs_bucket="b", gx_container_image="img-tpu:v1", accelerator_family="tpu"
+    )
+    run_dir = _run_dir(tmp_path)
+    _, compute_class, manifest = gke.build_job_spec(run_dir, parameters=SMALL)
+    assert compute_class == "gx-tpu-v6e"
+    pod_spec = manifest["spec"]["template"]["spec"]
+    assert pod_spec["nodeSelector"] == {"cloud.google.com/compute-class": "gx-tpu-v6e"}
+    assert {"key": "google.com/tpu", "operator": "Exists", "effect": "NoSchedule"} in pod_spec[
+        "tolerations"
+    ]
+    container = pod_spec["containers"][0]
+    assert container["resources"]["requests"]["google.com/tpu"] == "4"
+    assert "nvidia.com/gpu" not in container["resources"]["requests"]
+    env_map = {e["name"]: e["value"] for e in container["env"]}
+    assert env_map["JAX_PLATFORMS"] == "tpu"
+    assert env_map["JAX_ENABLE_X64"] == "1"
+    assert manifest["metadata"]["labels"]["accelerator_family"] == "tpu"
+
+    _, highmem_class, _ = gke.build_job_spec(run_dir, parameters=SMALL, force_high_memory=True)
+    assert highmem_class == "gx-tpu-v5p"

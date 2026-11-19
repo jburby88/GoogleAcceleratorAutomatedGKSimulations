@@ -1,0 +1,66 @@
+debug = false
+
+Controls.scheme = "sspx3"
+
+Dimensions.ntheta = 8
+Dimensions.nperiod = 1
+Dimensions.ny = 4
+Dimensions.nx = 4
+Dimensions.nhermite = 8
+Dimensions.nlaguerre = 3
+Dimensions.nspecies = 1
+
+Domain.y0 = 10.0
+Domain.x0 = 20.0
+Domain.boundary = "periodic"
+ 
+Controls.closure_model = "none"
+ 
+Time.dt = 0.01
+Time.nstep  = 400
+Time.nwrite = 100
+
+Boltzmann.add_Boltzmann_species = true
+Boltzmann.Boltzmann_type = "electrons"
+Boltzmann.tau_fac = 1.0
+
+Geometry.igeo = 0
+Geometry.eps = 0.0
+Geometry.shat = 1.0e-8
+Geometry.Rmaj = 1.0
+Geometry.shift = 0.0
+Geometry.qinp = 1.0
+Geometry.slab = true
+Geometry.const_curv = false
+
+Controls.nonlinear_mode = true 
+Controls.cfl = 1.0
+
+Controls.kpar_init = 0.0
+
+Diagnostics.fluxes = true
+Diagnostics.omega  = true
+Diagnostics.free_energy = true
+ 
+Restart.restart = true
+Restart.restart_from_file = "kh01_restart.nc"
+Restart.restart_with_perturb = true
+
+Restart.save_for_restart = true
+Restart.restart_to_file = "kh01a_restart.nc"
+Restart.scale = 500.0
+
+Controls.init_field = "density"
+Controls.init_amp = 1.0e-8
+
+# it is okay to have extra species data here; only the first nspecies elements of each item are used
+
+[species]
+ z     = [ 1.0,      -1.0     ]
+ mass  = [ 1.0,       2.7e-4  ]
+ dens  = [ 1.0,       1.0     ]
+ temp  = [ 1.0,       1.0     ]
+ tprim = [ 0.0,       0.0     ]
+ fprim = [ 0.0,       0.0     ]
+ vnewk = [ 0.0,       0.0     ]
+ type  = [ "ion",  "electron" ]

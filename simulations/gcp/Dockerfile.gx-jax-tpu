@@ -1,0 +1,69 @@
+# Build from repository root:
+#   docker build -f simulations/gcp/Dockerfile.gx-jax-tpu \
+#     --build-arg GX_COMMIT="$(git rev-parse HEAD)" -t gx-jax-tpu:latest .
+
+FROM python:3.11-slim-bookworm
+
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+
+ARG GX_COMMIT
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    HDF5_USE_FILE_LOCKING=FALSE \
+    JAX_ENABLE_X64=1 \
+    JAX_DEFAULT_MATMUL_PRECISION=highest \
+    HOME=/tmp \
+    GX_BUILD_INFO=/opt/gx/gx_build.json
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libhdf5-dev \
+    libnetcdf-dev \
+    libopenblas0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/ut-austin
+
+COPY platform/hpc-core ./platform/hpc-core
+COPY simulations/hpc ./simulations/hpc
+COPY simulations/gcp ./simulations/gcp
+COPY simulations/gx-jax ./simulations/gx-jax
+
+# Install TPU JAX wheels first, then editable workspace packages so
+# benchmarks/ stays adjacent to gx_jax/ for build-time HLO checks.
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir \
+        "jax[tpu]>=0.7.0" \
+        -f https://storage.googleapis.com/jax-releases/libtpu_releases.html \
+    && pip install --no-cache-dir \
+        -e /opt/ut-austin/simulations/gx-jax \
+        /opt/ut-austin/platform/hpc-core \
+        /opt/ut-austin/simulations/hpc \
+        /opt/ut-austin/simulations/gcp \
+    && chmod -R a+rX /opt/ut-austin
+
+# Verify StableHLO emits pure fp32 arithmetic under JAX_ENABLE_X64=1.
+RUN JAX_PLATFORMS=cpu \
+    GX_JAX_FP32_TIME=1 \
+    JAX_ENABLE_X64=1 \
+    XLA_FLAGS="--xla_force_host_platform_device_count=4" \
+    python3 -m gx_jax._verify_fp32_hlo
+
+# Fail fast unless GX_COMMIT is a full 40-hex commit SHA, then record provenance.
+RUN if [[ ! "${GX_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]]; then \
+        echo "ERROR: --build-arg GX_COMMIT must be a full 40-hex lowercase commit SHA (got '${GX_COMMIT:-}')" >&2; \
+        exit 1; \
+    fi \
+    && mkdir -p /opt/gx /workspace \
+    && cp /opt/ut-austin/simulations/gx-jax/THIRD_PARTY_NOTICES.md /opt/gx/THIRD_PARTY_NOTICES.md \
+    && printf '{"gx_commit": "%s", "real_gx": true, "solver": "gx-jax", "accelerator_family": "tpu"}\n' "${GX_COMMIT}" > /opt/gx/gx_build.json \
+    && chmod 0444 /opt/gx/gx_build.json /opt/gx/THIRD_PARTY_NOTICES.md \
+    && chmod 1777 /tmp /workspace \
+    && groupadd --gid 10001 gx \
+    && useradd --uid 10001 --gid 10001 --home-dir /tmp --no-create-home --shell /usr/sbin/nologin gx
+
+USER 10001:10001
+WORKDIR /workspace
+
+ENTRYPOINT ["gcp-gx-babysitter"]
