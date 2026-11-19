@@ -1,0 +1,77 @@
+# Exact Mandell et al. (2024, arXiv:2209.06731v3) Table 2 Baseline: (L=16, M=32), 8x A100 = 86 ms/step
+ debug = false
+
+[Dimensions]
+ ntheta = 32
+ nperiod = 1
+ ny = 64
+ nx = 192
+ nhermite = 32
+ nlaguerre = 16
+ nspecies = 2
+
+[Domain]
+ y0 = 30.0
+ boundary = "linked"
+
+[Physics]
+ beta = 1e-3
+ nonlinear_mode = true
+ ei_colls = false
+
+[Time]
+ dt = 0.1
+ t_max = 200.0
+ cfl = 1.0
+ scheme = "sspx3"
+
+[Initialization]
+ ikpar_init = 0
+ init_field = "density"
+ init_amp = 1.0e-2
+
+[Geometry]
+ geo_option = "miller"
+ rhoc = 0.5
+ Rmaj = 2.77778
+ R_geo = 2.77778
+ qinp = 1.4
+ shat = 0.8
+ shift = 0.0
+ akappa = 1.0
+ akappri = 0.0
+ tri = 0.0
+ tripri = 0.0
+ betaprim = 0.0
+
+[species]
+ z     = [ 1.0,      -1.0     ]
+ mass  = [ 1.0,       2.7e-4  ]
+ dens  = [ 1.0,       1.0     ]
+ temp  = [ 1.0,       1.0     ]
+ tprim = [ 2.49,      2.49    ]
+ fprim = [ 0.8,       0.8     ]
+ vnewk = [ 0.000167,  0.01    ]
+ type  = [ "ion",  "electron" ]
+
+[Dissipation]
+ closure_model = "none"
+ hypercollisions = true
+ nu_hyper_m = 0.1
+ p_hyper_m = 6
+ nu_hyper_l = 0.1
+ p_hyper_l = 6
+ hyper = true
+ D_hyper = 0.05
+ p_hyper = 2
+
+[Restart]
+ restart = false
+ save_for_restart = false
+
+[Diagnostics]
+ nwrite = 100
+ free_energy = true
+ fluxes = true
+ fields = false
+ moments = false

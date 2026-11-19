@@ -61,7 +61,18 @@ def validate_config(cfg: dict[str, Any], *, dry_run: bool = False) -> dict[str, 
     if backend not in _GKE_MODES + _BATCH_MODES:
         raise ConfigError(f"unknown backend {backend!r}")
     _require(cfg, "gcs_bucket")
-    _require(cfg, "gx_container_image")
+    accelerator_family = str(cfg.get("accelerator_family", "gpu")).strip().lower()
+    if accelerator_family not in ("gpu", "tpu"):
+        raise ConfigError(f"accelerator_family must be 'gpu' or 'tpu', got {accelerator_family!r}")
+    if accelerator_family == "tpu":
+        if not str(
+            cfg.get("gx_tpu_container_image") or cfg.get("gx_container_image") or ""
+        ).strip():
+            raise ConfigError(
+                "missing required config key 'gx_tpu_container_image' (or 'gx_container_image')"
+            )
+    else:
+        _require(cfg, "gx_container_image")
     if not dry_run:
         _require(cfg, "aurora_steer_url")
     if environment == "prod":
@@ -75,13 +86,21 @@ def validate_config(cfg: dict[str, Any], *, dry_run: bool = False) -> dict[str, 
             )
         if os.environ.get("GX_SIMULATE_RUN", "").strip().lower() in _TRUTHY:
             raise ConfigError("GX_SIMULATE_RUN is refused in environment=prod")
-        image = str(cfg["gx_container_image"])
+        image = str(
+            (cfg.get("gx_tpu_container_image") if accelerator_family == "tpu" else None)
+            or cfg.get("gx_container_image", "")
+        )
+        image_key = (
+            "gx_tpu_container_image"
+            if accelerator_family == "tpu" and cfg.get("gx_tpu_container_image")
+            else "gx_container_image"
+        )
         last_segment = image.rsplit("/", 1)[-1]
         if "@sha256:" not in image and (
             ":" not in last_segment or last_segment.endswith(":latest")
         ):
             raise ConfigError(
-                "gx_container_image must be pinned in prod (immutable tag or @sha256 digest), "
+                f"{image_key} must be pinned in prod (immutable tag or @sha256 digest), "
                 f"not {image!r}: the dataset records which GX binary produced each run"
             )
     if backend in _BATCH_MODES:
@@ -118,15 +137,21 @@ def build_backend(cfg: dict[str, Any], state_dir: Path) -> tuple[SchedulerBacken
     """Construct the configured backend; raises ConfigError/ValueError on unsafe settings."""
     backend_mode = str(cfg.get("backend", "gcp_batch")).strip().lower()
     environment = str(cfg.get("environment", "prod")).strip().lower()
+    accelerator_family = str(cfg.get("accelerator_family", "gpu")).strip().lower()
+    selected_image = str(
+        (cfg.get("gx_tpu_container_image") if accelerator_family == "tpu" else None)
+        or cfg["gx_container_image"]
+    )
     common: dict[str, Any] = {
         "gcs_bucket": str(cfg["gcs_bucket"]),
-        "gx_container_image": str(cfg["gx_container_image"]),
+        "gx_container_image": selected_image,
         "gcs_mount_path": str(cfg.get("gcs_mount_path", "/mnt/gk_bucket")),
         "cpu_only": _bool(cfg, "cpu_only", False),
         "max_run_duration_s": int(cfg.get("max_run_duration_s", 28800)),
         "environment": environment,
         "allow_on_demand": _bool(cfg, "allow_on_demand", False),
         "max_pending_s": float(cfg.get("max_pending_s", 1800.0)),
+        "accelerator_family": accelerator_family,
         "state_dir": state_dir,
     }
     if backend_mode in _GKE_MODES:
@@ -138,6 +163,8 @@ def build_backend(cfg: dict[str, Any], state_dir: Path) -> tuple[SchedulerBacken
             ),
             compute_class_highmem=str(cfg.get("compute_class_highmem", "gx-gpu-highmem")),
             compute_class_cpu=str(cfg.get("compute_class_cpu", "gx-cpu")),
+            compute_class_tpu_v6e=str(cfg.get("compute_class_tpu_v6e", "gx-tpu-v6e")),
+            compute_class_tpu_v5p=str(cfg.get("compute_class_tpu_v5p", "gx-tpu-v5p")),
             ksa_name=str(cfg.get("ksa_name", "gx-runner-ksa")),
             k8s_api_url=str(cfg.get("k8s_api_url", "https://kubernetes.default.svc")),
             k8s_auth=str(cfg.get("k8s_auth", "in_cluster")),

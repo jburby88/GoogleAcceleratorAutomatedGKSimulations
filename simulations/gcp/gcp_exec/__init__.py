@@ -7,6 +7,7 @@ from gcp_exec.gpu_selector import (
     estimate_gx_vram_gb,
     select_gpu_tier,
     select_obtainable_target,
+    select_tpu_tier,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "estimate_gx_vram_gb",
     "select_gpu_tier",
     "select_obtainable_target",
+    "select_tpu_tier",
 ]

@@ -278,3 +278,111 @@ spec:
   nodePoolAutoCreation:
     enabled: true
   whenUnsatisfiable: DoNotScaleUp
+---
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: gx-tpu-v6e
+  labels:
+    workstream: kr2-gk-database
+    provisioning: spot-only
+  annotations:
+    cloud.google.com/description: >
+      Default Spot-only GKE TPU v6e ComputeClass for gx-jax: prefers 4-chip 2x2
+      slices, with 8-chip 2x4 Spot fallback.
+spec:
+  priorities:
+    - tpu:
+        type: tpu-v6e-slice
+        count: 4
+        topology: "2x2"
+      spot: true
+    - tpu:
+        type: tpu-v6e-slice
+        count: 8
+        topology: "2x4"
+      spot: true
+  nodePoolAutoCreation:
+    enabled: true
+  whenUnsatisfiable: DoNotScaleUp
+---
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: gx-tpu-v6e-ondemand
+  labels:
+    workstream: kr2-gk-database
+    provisioning: on-demand-opt-in
+  annotations:
+    cloud.google.com/description: >
+      Opt-in (allow_on_demand=true) GKE TPU v6e ComputeClass: Spot slices first,
+      then on-demand 2x2 slice.
+spec:
+  priorities:
+    - tpu:
+        type: tpu-v6e-slice
+        count: 4
+        topology: "2x2"
+      spot: true
+    - tpu:
+        type: tpu-v6e-slice
+        count: 8
+        topology: "2x4"
+      spot: true
+    - tpu:
+        type: tpu-v6e-slice
+        count: 4
+        topology: "2x2"
+      spot: false
+  nodePoolAutoCreation:
+    enabled: true
+  whenUnsatisfiable: DoNotScaleUp
+---
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: gx-tpu-v5p
+  labels:
+    workstream: kr2-gk-database
+    provisioning: spot-only
+  annotations:
+    cloud.google.com/description: >
+      High-HBM Spot-only GKE TPU v5p ComputeClass (2x2x1 slice, 380 GiB HBM) for
+      large kinetic-electron stellarator grids.
+spec:
+  priorities:
+    - tpu:
+        type: tpu-v5p-slice
+        count: 4
+        topology: "2x2x1"
+      spot: true
+  nodePoolAutoCreation:
+    enabled: true
+  whenUnsatisfiable: DoNotScaleUp
+---
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: gx-tpu-v5p-ondemand
+  labels:
+    workstream: kr2-gk-database
+    provisioning: on-demand-opt-in
+  annotations:
+    cloud.google.com/description: >
+      Opt-in (allow_on_demand=true) GKE TPU v5p ComputeClass: Spot first, then
+      on-demand 2x2x1 slice.
+spec:
+  priorities:
+    - tpu:
+        type: tpu-v5p-slice
+        count: 4
+        topology: "2x2x1"
+      spot: true
+    - tpu:
+        type: tpu-v5p-slice
+        count: 4
+        topology: "2x2x1"
+      spot: false
+  nodePoolAutoCreation:
+    enabled: true
+  whenUnsatisfiable: DoNotScaleUp

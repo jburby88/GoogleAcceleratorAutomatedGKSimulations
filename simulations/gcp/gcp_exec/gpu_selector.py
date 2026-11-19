@@ -11,11 +11,13 @@ from typing import Any
 class GPUTierSpec:
     """Machine & accelerator specification for GCP Cloud Batch."""
 
-    tier_name: str  # "l4", "t4", "a100", "g4", or "cpu"
+    tier_name: str  # "l4", "t4", "a100", "g4", "cpu", "v6e-4", "v6e-8", or "v5p-8"
     machine_type: str
     accelerator_type: str
     accelerator_count: int
     vram_gb: float
+    accelerator_family: str = "gpu"
+    tpu_topology: str | None = None
 
 
 T4_SPOT_SPEC = GPUTierSpec(
@@ -58,9 +60,41 @@ CPU_DEMO_SPEC = GPUTierSpec(
     vram_gb=16.0,
 )
 
+TPU_V6E_4_SPEC = GPUTierSpec(
+    tier_name="v6e-4",
+    machine_type="ct6e-standard-4t",
+    accelerator_type="tpu-v6e-slice",
+    accelerator_count=4,
+    vram_gb=128.0,
+    accelerator_family="tpu",
+    tpu_topology="2x2",
+)
+
+TPU_V6E_8_SPEC = GPUTierSpec(
+    tier_name="v6e-8",
+    machine_type="ct6e-standard-8t",
+    accelerator_type="tpu-v6e-slice",
+    accelerator_count=8,
+    vram_gb=256.0,
+    accelerator_family="tpu",
+    tpu_topology="2x4",
+)
+
+TPU_V5P_8_SPEC = GPUTierSpec(
+    tier_name="v5p-8",
+    machine_type="ct5p-hightpu-4t",
+    accelerator_type="tpu-v5p-slice",
+    accelerator_count=4,
+    vram_gb=380.0,
+    accelerator_family="tpu",
+    tpu_topology="2x2x1",
+)
+
 # Leave 2.5 GB / 4 GB CUDA/cuFFT workspace headroom below 16 GB T4 and 24 GB L4 ceilings
 T4_SAFE_VRAM_CEILING_GB = 13.5
 L4_SAFE_VRAM_CEILING_GB = 20.0
+TPU_V6E_4_SAFE_HBM_CEILING_GB = 100.0
+TPU_V6E_8_SAFE_HBM_CEILING_GB = 220.0
 
 DEFAULT_CANDIDATE_REGIONS: tuple[str, ...] = (
     "us-central1",
@@ -115,6 +149,23 @@ def select_gpu_tier(
     return L4_SPOT_SPEC
 
 
+def select_tpu_tier(
+    parameters: dict[str, Any] | None = None,
+    *,
+    force_high_memory: bool = False,
+    tpu_chips: int | None = None,
+) -> GPUTierSpec:
+    """Select Spot TPU v6e-4 (`ct6e-standard-4t`) by default; scale to v6e-8 or v5p-8 for large grids."""
+    if force_high_memory:
+        return TPU_V5P_8_SPEC
+    est_gb = estimate_gx_vram_gb(parameters)
+    if est_gb > TPU_V6E_8_SAFE_HBM_CEILING_GB:
+        return TPU_V5P_8_SPEC
+    if tpu_chips == 8 or est_gb > TPU_V6E_4_SAFE_HBM_CEILING_GB:
+        return TPU_V6E_8_SPEC
+    return TPU_V6E_4_SPEC
+
+
 class ObtainabilityExhaustedError(RuntimeError):
     """The bounded region/SKU waterfall has no step left (raised so the watchdog escalates)."""
 
@@ -133,6 +184,13 @@ def resolve_candidate_regions(
     return list(dict.fromkeys(regions)) or ["us-central1"]
 
 
+def _normalize_accelerator_family(accelerator_family: str) -> str:
+    family = (accelerator_family or "gpu").strip().lower()
+    if family not in ("gpu", "tpu"):
+        raise ValueError(f"accelerator_family must be 'gpu' or 'tpu', got {accelerator_family!r}")
+    return family
+
+
 def obtainability_waterfall(
     parameters: dict[str, Any] | None = None,
     *,
@@ -143,18 +201,32 @@ def obtainability_waterfall(
     allow_on_demand: bool = False,
     allow_a100_fallback: bool = False,
     allow_g4_fallback: bool = False,
+    accelerator_family: str = "gpu",
 ) -> list[tuple[str, GPUTierSpec, str]]:
-    """The finite, ordered list of `(region, gpu_spec, provisioning_model)` steps (GCP-04).
+    """The finite, ordered list of `(region, spec, provisioning_model)` steps.
 
-    1. primary tier (L4, or A100/G4 when the VRAM estimate, an OOM, or `prefer_g4` requires it) on SPOT, per region;
-    2. a fallback SKU on SPOT, per region: T4 when the run fits its 13.5 GB ceiling;
-       Spot G4 (`nvidia-rtx-pro-6000`, 96 GB) with `allow_g4_fallback=True`;
-       Spot A100 only with `allow_a100_fallback=True` (about 5x the L4 Spot price);
-    3. on-demand STANDARD capacity for the primary tier, per region, only with
-       `allow_on_demand=True` (explicit operator opt-in; never reached by default).
-    The list is the hard cap: once exhausted the backend refuses to submit.
+    Supports both `accelerator_family="gpu"` (Spot L4 -> T4/G4/A100 -> opt-in on-demand)
+    and `accelerator_family="tpu"` (Spot v6e-4 -> v6e-8 -> v5p-8 -> opt-in on-demand).
     """
+    family = _normalize_accelerator_family(accelerator_family)
     regions = resolve_candidate_regions(candidate_regions)
+
+    if family == "tpu":
+        primary = select_tpu_tier(parameters, force_high_memory=force_high_memory)
+        fallbacks: list[GPUTierSpec] = []
+        if primary.tier_name == "v6e-4":
+            fallbacks = [TPU_V6E_8_SPEC, TPU_V5P_8_SPEC]
+        elif primary.tier_name == "v6e-8":
+            fallbacks = [TPU_V5P_8_SPEC]
+        steps: list[tuple[str, GPUTierSpec, str]] = []
+        if spot_preferred:
+            steps += [(r, primary, "SPOT") for r in regions]
+            for fb in fallbacks:
+                steps += [(r, fb, "SPOT") for r in regions]
+        if allow_on_demand:
+            steps += [(r, primary, "STANDARD") for r in regions]
+        return steps
+
     primary = select_gpu_tier(
         parameters,
         force_high_memory=force_high_memory,
@@ -170,7 +242,7 @@ def obtainability_waterfall(
         elif allow_a100_fallback:
             fallback = A100_SPOT_SPEC
 
-    steps: list[tuple[str, GPUTierSpec, str]] = []
+    steps = []
     if spot_preferred:
         steps += [(r, primary, "SPOT") for r in regions]
         if fallback is not None:
@@ -193,6 +265,7 @@ def select_obtainable_target(
     allow_a100_fallback: bool = False,
     allow_g4_fallback: bool = False,
     attempt_index: int | None = None,
+    accelerator_family: str = "gpu",
 ) -> tuple[str, GPUTierSpec, str]:
     """Return step `rotation_index` of the bounded obtainability waterfall.
 
@@ -205,8 +278,11 @@ def select_obtainable_target(
     """
     idx = max(0, int(rotation_index if attempt_index is None else attempt_index))
     regions = resolve_candidate_regions(candidate_regions)
+    family = _normalize_accelerator_family(accelerator_family)
 
-    if cpu_only or os.getenv("GCP_BATCH_CPU_ONLY", "0").strip().lower() in ("1", "true", "yes"):
+    if family == "gpu" and (
+        cpu_only or os.getenv("GCP_BATCH_CPU_ONLY", "0").strip().lower() in ("1", "true", "yes")
+    ):
         if not spot_preferred and not allow_on_demand:
             raise ObtainabilityExhaustedError(
                 "spot_provisioning=false requires allow_on_demand=true"
@@ -226,14 +302,16 @@ def select_obtainable_target(
         allow_on_demand=allow_on_demand,
         allow_a100_fallback=allow_a100_fallback,
         allow_g4_fallback=allow_g4_fallback,
+        accelerator_family=family,
     )
     if not steps:
         raise ObtainabilityExhaustedError(
-            "spot_provisioning=false requires allow_on_demand=true (on-demand GPUs are opt-in)"
+            "spot_provisioning=false requires allow_on_demand=true "
+            f"(on-demand {family.upper()}s are opt-in)"
         )
     if idx >= len(steps):
         raise ObtainabilityExhaustedError(
-            f"GPU obtainability waterfall exhausted after {len(steps)} step(s) "
+            f"{family.upper()} obtainability waterfall exhausted after {len(steps)} step(s) "
             f"(allow_on_demand={allow_on_demand}, allow_a100_fallback={allow_a100_fallback})"
         )
     return steps[idx]

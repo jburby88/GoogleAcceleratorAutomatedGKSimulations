@@ -150,3 +150,36 @@ def test_example_config_is_valid_and_mirrors_the_executor_allowlist(tmp_path: Pa
     assert backend.network == cfg["network"]
     assert backend.subnetwork == cfg["subnetwork"]
     assert backend.no_external_ip is True
+
+
+def test_tpu_runner_config_selection_and_validation(tmp_path: Path) -> None:
+    tpu_img = "us-central1-docker.pkg.dev/p/r/gx-jax-tpu@sha256:" + "b" * 64
+    cfg = validate_config(_cfg(tmp_path, accelerator_family="tpu", gx_tpu_container_image=tpu_img))
+    backend, name = build_backend(cfg, tmp_path / "state")
+    assert isinstance(backend, CloudBatchBackend) and name == "gcp_batch"
+    assert backend.accelerator_family == "tpu"
+    assert backend.gx_container_image == tpu_img
+
+    gke_cfg = validate_config(
+        _cfg(
+            tmp_path,
+            backend="gcp_k8s",
+            accelerator_family="tpu",
+            gx_tpu_container_image=tpu_img,
+        )
+    )
+    gke_backend, gke_name = build_backend(gke_cfg, tmp_path / "state-gke")
+    assert isinstance(gke_backend, GKEComputeClassBackend) and gke_name == "gcp_k8s"
+    assert gke_backend.accelerator_family == "tpu"
+    assert gke_backend.gx_container_image == tpu_img
+
+    with pytest.raises(ConfigError, match="accelerator_family"):
+        validate_config(_cfg(tmp_path, accelerator_family="fpga"))
+    with pytest.raises(ConfigError, match="gx_tpu_container_image must be pinned"):
+        validate_config(
+            _cfg(
+                tmp_path,
+                accelerator_family="tpu",
+                gx_tpu_container_image="us-central1-docker.pkg.dev/p/r/gx-jax-tpu:latest",
+            )
+        )

@@ -102,6 +102,12 @@ load_config() {
   CAMPAIGN="$(strip_quotes "${CAMPAIGN_ID:-pilot_50}")"
   CPU_ONLY="$(strip_quotes "${GCP_BATCH_CPU_ONLY:-0}")"
   CANDIDATE_REGIONS="$(strip_quotes "${GCP_BATCH_CANDIDATE_REGIONS:-}")"
+  ACCEL_FAMILY="$(printf '%s' "$(strip_quotes "${ACCELERATOR_FAMILY:-gpu}")" | tr '[:upper:]' '[:lower:]')"
+  BUILD_TPU_IMG="$(strip_quotes "${BUILD_GX_TPU_IMAGE:-false}")"
+  case "${ACCEL_FAMILY}" in
+    gpu | tpu) ;;
+    *) die "ACCELERATOR_FAMILY must be gpu or tpu (got '${ACCEL_FAMILY}')" ;;
+  esac
 
   [ -n "${PROJECT_ID}" ] || die "GOOGLE_CLOUD_PROJECT is not set (copy .env.example to .env and set it)"
   [[ "${PROJECT_ID}" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || die "GOOGLE_CLOUD_PROJECT='${PROJECT_ID}' is not a valid project ID"
@@ -171,18 +177,19 @@ dockerfile_for() {
     aurora-steer) printf '%s' "platform/aurora-steer/Dockerfile" ;;
     dashboard) printf '%s' "platform/dashboard/Dockerfile" ;;
     gx-runner) printf '%s' "simulations/gcp/Dockerfile.gx-runner" ;;
+    gx-jax-tpu) printf '%s' "simulations/gcp/Dockerfile.gx-jax-tpu" ;;
     *) die "unknown image '$1'" ;;
   esac
 }
 
 # Prints "<repo>/<image>@sha256:<digest>". Builds and pushes only when the tag is new
-# (Artifact Registry tags are immutable). gx-runner builds need GX_COMMIT (40-hex GX git SHA);
-# its tag carries that commit so a GX bump always produces a new image.
+# (Artifact Registry tags are immutable). gx-runner and gx-jax-tpu builds need GX_COMMIT
+# (40-hex commit SHA); their tag carries that commit so a solver bump always produces a new image.
 build_image() {
   local name="$1" tag="$2" ref digest dockerfile
   local build_args=()
   dockerfile="$(dockerfile_for "${name}")"
-  if [ "${name}" = "gx-runner" ]; then
+  if [ "${name}" = "gx-runner" ] || [ "${name}" = "gx-jax-tpu" ]; then
     [[ "${GX_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] || die "GX_COMMIT must be the 40-hex GX git commit to build (see .env.example)"
     build_args=(--build-arg "GX_COMMIT=${GX_COMMIT}")
     tag="${tag}-gx${GX_COMMIT:0:12}"
@@ -202,7 +209,7 @@ import sys
 
 out, dockerfile, ref, name, gx_commit = sys.argv[1:6]
 args = ["build", "--platform", "linux/amd64"]
-if name == "gx-runner":
+if name in ("gx-runner", "gx-jax-tpu"):
     args.extend(["--build-arg", f"GX_COMMIT={gx_commit}"])
 args.extend(["-f", dockerfile, "-t", ref, "."])
 cfg = {
@@ -211,7 +218,7 @@ cfg = {
     "timeout": "3600s",
     "options": {
         "logging": "CLOUD_LOGGING_ONLY",
-        **({"machineType": "E2_HIGHCPU_32"} if name == "gx-runner" else {}),
+        **({"machineType": "E2_HIGHCPU_32"} if name in ("gx-runner", "gx-jax-tpu") else {}),
     },
 }
 pathlib.Path(out).write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
@@ -340,14 +347,15 @@ ensure_secret_version() {
 
 write_babysitter_config() {
   # $1 output path, $2 gx-runner image, $3 aurora-steer URL, $4 bucket, $5 worker SA,
-  # $6 vpc_network URI, $7 vpc_subnetwork URI
+  # $6 vpc_network URI, $7 vpc_subnetwork URI, $8 optional gx-jax-tpu image
   local environment="prod"
+  local tpu_image="${8:-}"
   if is_true "${CPU_ONLY}"; then
     environment="sim"
     echo "NOTE: GCP_BATCH_CPU_ONLY is set, so the babysitter runs with environment=sim (CPU-only GX is refused in prod; sim runs never count in KPIs)." >&2
   fi
-  python3 - "$1" "$2" "$3" "$4" "$5" "$6" "$7" "${PROJECT_ID}" "${REGION}" "${CAMPAIGN}" \
-    "${environment}" "${CANDIDATE_REGIONS}" "${NO_EXT_IP}" <<'PY'
+  python3 - "$1" "$2" "$3" "$4" "$5" "$6" "$7" "${tpu_image}" "${PROJECT_ID}" "${REGION}" \
+    "${CAMPAIGN}" "${environment}" "${CANDIDATE_REGIONS}" "${NO_EXT_IP}" "${ACCEL_FAMILY}" <<'PY'
 import json
 import pathlib
 import sys
@@ -360,13 +368,15 @@ import sys
     worker_sa,
     vpc_net,
     vpc_subnet,
+    tpu_image,
     project,
     region,
     campaign,
     environment,
     regions,
     no_ext_ip_raw,
-) = sys.argv[1:14]
+    accel_family,
+) = sys.argv[1:16]
 no_ext_ip = no_ext_ip_raw.strip().lower() == "true"
 cfg = json.loads(
     pathlib.Path("simulations/gcp/config.batch.example.json").read_text(encoding="utf-8")
@@ -377,6 +387,7 @@ cfg.update(
         "backend": "gcp_batch",
         "campaign_id": campaign,
         "environment": environment,
+        "accelerator_family": accel_family,
         "aurora_steer_url": steer_url,
         "gcp_project_id": project,
         "gcp_region": region,
@@ -395,6 +406,8 @@ cfg.update(
         "dataset_gcs_uri_prefix": f"gs://{bucket}",
     }
 )
+if tpu_image:
+    cfg["gx_tpu_container_image"] = tpu_image
 cfg.pop("project_id", None)
 cfg.pop("region", None)
 pathlib.Path(out).write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
@@ -476,7 +489,7 @@ cmd_deploy() {
   if ! use_cloud_build; then
     require_tools docker
   fi
-  local tag steer_img dash_img gx_img steer_url dash_url bucket worker_sa vpc_net vpc_subnet
+  local tag steer_img dash_img gx_img gx_tpu_img steer_url dash_url bucket worker_sa vpc_net vpc_subnet ar_repo
   if [ -n "${AURORA_STEER_BEARER_TOKEN:-}" ]; then
     echo "NOTE: AURORA_STEER_BEARER_TOKEN is set locally; this script never uploads local tokens (see the token rotation section of docs/RUNBOOK_DEMO_AND_TACC_SMOKE_TEST.md)." >&2
   fi
@@ -518,6 +531,10 @@ cmd_deploy() {
   steer_img="$(build_image aurora-steer "${tag}")"
   dash_img="$(build_image dashboard "${tag}")"
   gx_img="$(build_image gx-runner "${tag}")"
+  gx_tpu_img=""
+  if [ "${ACCEL_FAMILY}" = "tpu" ] || is_true "${BUILD_TPU_IMG}"; then
+    gx_tpu_img="$(build_image gx-jax-tpu "${tag}")"
+  fi
 
   log "[5/7] Applying the full Terraform stack"
   tf_args "${steer_img}" "${dash_img}" "${gx_img}"
@@ -533,6 +550,10 @@ cmd_deploy() {
   worker_sa="$(run_terraform output -raw gcp_batch_worker_service_account)"
   vpc_net="$(run_terraform output -raw vpc_network)"
   vpc_subnet="$(run_terraform output -raw vpc_subnetwork)"
+  ar_repo="$(run_terraform output -raw artifact_registry_repository 2>/dev/null || true)"
+  if [ -z "${gx_tpu_img}" ]; then
+    gx_tpu_img="${ar_repo:-${AR_REPO}}/gx-jax-tpu:${tag}-gx${GX_COMMIT:0:12}"
+  fi
   if [ -z "${vpc_net}" ] || [ -z "${vpc_subnet}" ]; then
     die "Terraform outputs vpc_network / vpc_subnetwork are empty"
   fi
@@ -542,7 +563,7 @@ cmd_deploy() {
   TMP_CFG="$(mktemp)"
   trap 'rm -f "${TMP_CFG:-}"' EXIT
   write_babysitter_config "${TMP_CFG}" "${gx_img}" "${steer_url}" "${bucket}" "${worker_sa}" \
-    "${vpc_net}" "${vpc_subnet}"
+    "${vpc_net}" "${vpc_subnet}" "${gx_tpu_img}"
   gcloud storage cp "${TMP_CFG}" "gs://${bucket}/config/batch_babysitter.json" --project="${PROJECT_ID}"
 
   cat <<EOF

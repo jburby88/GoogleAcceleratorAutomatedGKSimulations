@@ -1,0 +1,59 @@
+ debug = false
+ Controls.scheme = "k10"
+
+ Dimensions.ntheta = 32
+ Dimensions.nperiod = 2
+ Dimensions.ny = 20
+ Dimensions.nx = 1
+ Dimensions.y0 = 20.0 
+
+ Domain.boundary = "linked"
+ 
+ Dimensions.nhermite = 16
+ Dimensions.nlaguerre = 8
+
+ Controls.closure_model = "smith_par"
+ Controls.smith_par_q = 2
+ 
+ Time.dt = 0.005
+ Time.nstep  = 10000
+ Time.nwrite = 1000
+
+ Geometry.beta = 0.0 
+ Boltzmann.tau_fac = 1.0
+ Boltzmann.add_Boltzmann_species = true
+ Boltzmann.Boltzmann_type = "electrons"
+ 
+ Geometry.igeo = 0
+ Geometry.eps = 0.18
+ Geometry.shat = 0.8
+ Geoemtry.Rmaj = 1.0
+ Geometry.shift = 0.0
+ Geometry.qinp = 1.4
+
+ Controls.nonlinear_mode = false 
+ Controls.cfl = 0.5 
+
+ Dimensions.nspecies = 1
+
+ Controls.kpar_init = 0.0
+ Diagnostics.fluxes = false
+ Diagnostics.omega  = true
+ Diagnostics.fixed_amplitude = true
+
+ Restart.restart = false
+ Restart.restart_to_file = "z_restart.nc"
+ Restart.save_for_restart = true
+ Controls.init_field = "density"
+
+ Controls.init_amp = 1.0
+
+[species]
+ z      = [ 1.0,   -1.0  ]
+ mass   = [ 1.0,   2.7e-4]
+ dens   = [ 1.0,    1.0  ]
+ temp   = [ 1.0,    1.0  ]
+ tprim  = [ 6.9,    0.0  ]
+ fprim  = [ 2.2,    2.2  ]
+ vnewk  = [ 0.0,    0.0  ]
+ type   = [ "ion", "electron" ] 

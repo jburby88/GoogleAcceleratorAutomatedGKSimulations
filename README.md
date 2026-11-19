@@ -1,39 +1,14 @@
-# UT Austin × Google.org AI for Science: Transport-Consistent Fusion Design
+# UT Austin × Google.org AI for Science: Transport-Consistent Optimization of High-Beta Stellarators
 
-Open-source platform (Apache-2.0) developed under the UT Austin / Google.org AI for Science partnership to accelerate transport-consistent magnetic fusion plasma optimization via automated gyrokinetic simulations and machine-learning surrogates.
+Open-source platform (Apache-2.0) developed under the UT Austin / Google.org Impact Challenge: AI for Science partnership to accelerate transport-consistent optimization of high-beta stellarators via automated gyrokinetic simulations and machine-learning surrogates.
 
 ---
 
 ## Architecture Overview
 
-```text
-                   ┌──────────────────────────────────────────┐
-                   │   aurora-steer (Cloud Run + Vertex AI)   │
-                   │  OKF runbooks + server-side guardrails   │
-                   │  BigQuery telemetry  →  private dashboard │
-                   └────────────▲────────────────▲────────────┘
-     Outbound HTTPS + Bearer    │                │  HTTPS + Bearer
-           (<2 KB JSON)         │                │  (<2 KB JSON)
-    ┌───────────────────────────┴──┐          ┌──┴───────────────────────────┐
-    │ Backend 1: TACC (tacc-driver)│          │ Backend 2: GCP (Cloud Batch) │
-    │ • GENE (Fortran) + TACC GX   │          │ • Containerized GX on GPUs   │
-    │ • Slurm (sbatch/squeue/sacct)│          │ • Spot L4 by default         │
-    │ • Dataset on $WORK           │          │ • GCS FUSE checkpoints       │
-    └──────────────┬───────────────┘          └──────────────┬───────────────┘
-                   │  Dataset output                         │  Dataset output
-                   └────────────────────┬────────────────────┘
-                                        ▼
-    ┌────────────────────────┐   ┌──────────────────────────────────────┐
-    │ Upstream Equilibria:   │   │  Dataset (TACC $WORK / GCS bucket)   │
-    │ ToBlick/mrx (3D MHD)   ├──►│  campaigns/<id>/equilibria/<eq_id>/  │
-    │ (projected geometries) │   │  campaigns/<id>/runs/<run_id>/       │
-    └────────────────────────┘   └──────────────────┬───────────────────┘
-                                                    ▼
-                                   Surrogate training & stellarator design
-                                                (KR1 / KR3)
-```
+![UT Austin × Google.org AI for Science Platform Architecture](docs/assets/architecture.svg)
 
-See [`docs/architecture.md`](docs/architecture.md) for the sequence diagrams.
+See [`docs/architecture.md`](docs/architecture.md) for the dual-backend babysitting sequence diagram and component details.
 
 ---
 
@@ -42,7 +17,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the sequence diagrams.
 ```text
 GoogleAcceleratorAutomatedGKSimulations/
 ├── platform/
-│   ├── aurora-steer/      # Cloud Run FastAPI + Google ADK agent (Vertex AI Gemini); loads OKF skills by name
+│   ├── aurora-steer/      # Cloud Run FastAPI + Google ADK agent (Gemini Enterprise Agent Platform, gemini-4-argon); loads OKF skills by name
 │   ├── dashboard/         # Streamlit dashboard: BigQuery views, prod rows only (local DuckDB mode for inspection)
 │   ├── hpc-core/          # HPC client: Slurm backend, state, HTTPS client, telemetry outbox, dataset manifest
 │   ├── telemetry/         # BigQuery DDL (01_tables.sql) + 8 KPI/operational views (02_views.sql) + contract tests
@@ -50,7 +25,8 @@ GoogleAcceleratorAutomatedGKSimulations/
 ├── simulations/
 │   ├── skill/sim-babysitter/okf/  # OKF manifest + physics runbooks + parameter allowlist (edited by physics team)
 │   ├── hpc/                       # Backend 1 (TACC Slurm): watchdog, GENE/GX patchers, cron driver
-│   ├── gcp/                       # Backend 2 (GCP Cloud Batch / GKE): containerized GX
+│   ├── gcp/                       # Backend 2 (GCP Cloud Batch / GKE): containerized GX (GPU & TPU)
+│   ├── gx-jax/                    # JAX/XLA port of the GX stellarator flux-tube solver for Cloud TPUs, GPUs & CPUs
 │   └── docs/                      # OPEN_QUESTIONS.md, METRICS.md, COST_ESTIMATE.md, RUNBOOKS.md
 ├── surrogates/            # Leak-free dataset loader, augmented Lagrangian optimization, active learning hooks
 ├── docs/                  # Architecture, OKR map, implementation plan, operator runbook
@@ -71,7 +47,7 @@ All recovery strategies and allowed numerical knobs live in Markdown/YAML under 
 ## Key Design & Safety Principles
 
 1. **Lightweight HPC Footprint**: The TACC client (`platform/hpc-core/` and `simulations/hpc/`) has zero heavy cloud or AI dependencies. It runs on standard Python with `requests`, `f90nml`, and `tomlkit`, keeping login node installations clean and trouble-free.
-2. **Compact Telemetry**: Instead of streaming heavy simulation files, executors send small diagnostic summaries (<2 KB of scalar metrics and recent tail logs) over HTTPS. Large NetCDF/HDF5 simulation files stay in local storage (`$WORK` or GCS).
+2. **Compact Telemetry**: Instead of streaming heavy simulation files, executors send small diagnostic summaries (<2 KB of scalar metrics and recent tail logs) over HTTPS. Large NetCDF/HDF5 simulation files stay in local/shared storage (TACC filesystem or GCS).
 3. **Strict Parameter Boundaries**: Automated triage can only modify allowlisted numerical knobs (`nx`, `ny`, `nz`, `dt_max`, `cfl_fraction`, `hyperdiffusion_coeff`). It never alters physics profiles, equilibrium geometry, or driving gradients. Any proposed modification outside safe bounds is safely rejected.
 4. **Pragmatic Automation**: Routine operational interruptions (like Slurm timeouts or Spot preemptions) resume automatically from checkpoints without calling the LLM. If a simulation fails repeatedly on the same issue, it escalates to a human after two tries.
 5. **Reproducible Dataset Provenance**: Every finished run writes an immutable manifest recording git hashes, equilibrium sources, parameter modifications, and convergence criteria, guaranteeing clean provenance for downstream ML surrogates.
@@ -115,31 +91,30 @@ Retrieve the token when a TACC operator needs it:
 gcloud secrets versions access latest --secret=aurora-steer-bearer-token --project="$GOOGLE_CLOUD_PROJECT"
 ```
 
-### 2. Verify outbound HTTPS from a TACC login node (Vista / Lonestar6)
+### 2. Activate the TACC Slurm babysitter (`tacc-driver`) for GENE & GX
+
+Outbound HTTPS from TACC login nodes to `aurora-steer` is verified (operators can re-run `python3 scripts/tacc_smoke_test.py` after token rotation or new deploys; see [`docs/RUNBOOK_DEMO_AND_TACC_SMOKE_TEST.md`](docs/RUNBOOK_DEMO_AND_TACC_SMOKE_TEST.md)).
 
 ```bash
-export AURORA_STEER_URL="https://aurora-steer-xxxx-uc.a.run.app"
-export AURORA_STEER_BEARER_TOKEN="<token from Secret Manager>"
-python3 scripts/tacc_smoke_test.py      # Python >= 3.8 standard library only, no venv needed
-```
-
-### 3. Activate the TACC Slurm babysitter (`tacc-driver`) for GENE & GX
-
-```bash
-cd "$WORK" && git clone https://github.com/jburby88/GoogleAcceleratorAutomatedGKSimulations.git
+export CAMPAIGN_DIR="/path/to/gk-campaigns"    # any persistent shared TACC directory
+git clone https://github.com/jburby88/GoogleAcceleratorAutomatedGKSimulations.git
 cd GoogleAcceleratorAutomatedGKSimulations
-make install-tacc                         # .venv-tacc: lightweight TACC runtime
-cp simulations/hpc/config.example.json "$WORK/gk-campaigns/config.json"   # keep dataset/state on $WORK, not $SCRATCH
+make install-tacc                              # .venv-tacc: lightweight TACC runtime
+mkdir -p "$CAMPAIGN_DIR"
+cp simulations/hpc/config.example.json "$CAMPAIGN_DIR/config.json"
 export AURORA_STEER_BEARER_TOKEN="<token>"
-.venv-tacc/bin/tacc-preflight --config "$WORK/gk-campaigns/config.json"
-.venv-tacc/bin/tacc-driver --config "$WORK/gk-campaigns/config.json" --once
+.venv-tacc/bin/tacc-preflight --config "$CAMPAIGN_DIR/config.json"
+.venv-tacc/bin/tacc-driver --config "$CAMPAIGN_DIR/config.json" --once
 ```
 
 For unattended runs from cron, pinned to one login node with a lock, see [`simulations/hpc/README.md`](simulations/hpc/README.md).
 
-### 4. Containerized GX on GCP Cloud Batch
+### 3. Containerized GX on GCP Cloud Batch & GKE (GPU & TPU)
 
-After `make gcp-deploy`, Cloud Scheduler starts the `gcp-gx-babysitter` Cloud Run job every 2 minutes. The job processes runs queued under `gs://<project>-gk-dataset/queue/pending/`. GPU jobs need GPU quota. `GCP_BATCH_CPU_ONLY=1` is a CPU-only smoke-test mode that runs as `environment=sim`, so it never enters KPIs or the dataset.
+After `make gcp-deploy`, Cloud Scheduler starts the `gcp-gx-babysitter` Cloud Run job every 2 minutes. The job processes runs queued under `gs://<project>-gk-dataset/queue/pending/` using either:
+
+- **C++ `GX` on GPUs** (`ACCELERATOR_FAMILY=gpu`, default): Spot NVIDIA L4 / opt-in A100 (`simulations/gcp/`). `GCP_BATCH_CPU_ONLY=1` is a CPU-only smoke-test mode that runs as `environment=sim`, so it never enters KPIs or the dataset.
+- **`GX-JAX` on Cloud TPUs** (`ACCELERATOR_FAMILY=tpu`): Spot TPU `v6e` / `v5p` JAX/XLA port (`simulations/gx-jax/`). See **[`simulations/gx-jax/BENCHMARKS.md`](simulations/gx-jax/BENCHMARKS.md)** for full Cloud TPU physics parity results, step-time benchmarks vs. upstream C++/CUDA `GX`, 3D W7-X stellarator runs, and `jax.vmap` multi-surface sweep throughput.
 
 ---
 
@@ -156,4 +131,4 @@ make coverage       # make test with coverage
 
 CI runs linting and hermetic tests across Python 3.11–3.13 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Deployments can be triggered via GitHub Actions ([`.github/workflows/deploy-cloudrun.yml`](.github/workflows/deploy-cloudrun.yml)) or locally via `make gcp-deploy`.
 
-See also [`docs/architecture.md`](docs/architecture.md), [`docs/OKR_MAP.md`](docs/OKR_MAP.md), [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), and [`simulations/docs/OPEN_QUESTIONS.md`](simulations/docs/OPEN_QUESTIONS.md).
+See also [`docs/architecture.md`](docs/architecture.md), [`simulations/gx-jax/BENCHMARKS.md`](simulations/gx-jax/BENCHMARKS.md), [`docs/OKR_MAP.md`](docs/OKR_MAP.md), [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), and [`simulations/docs/OPEN_QUESTIONS.md`](simulations/docs/OPEN_QUESTIONS.md).

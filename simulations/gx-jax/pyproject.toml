@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gx-jax"
+version = "0.1.0"
+description = "Stellarator flux-tube gyrokinetic solver in JAX/XLA (ported from GX)"
+readme = "README.md"
+license = { file = "THIRD_PARTY_NOTICES.md" }
+requires-python = ">=3.11"
+dependencies = [
+    "jax[cpu]>=0.7.0",
+    "numpy>=1.26.0",
+    "scipy>=1.11.0",
+    "netCDF4>=1.6.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.6.0",
+]
+tpu = [
+    "jax[tpu]>=0.7.0",
+]
+cuda = [
+    "jax[cuda12]>=0.7.0",
+]
+
+[project.scripts]
+gx-jax = "gx_jax.cli:main"
+gx = "gx_jax.cli:main"
+gx-jax-ensemble = "gx_jax.ensemble:main"
+gx-jax-campaign = "gx_jax.campaign:main"
+
+[tool.setuptools.packages.find]
+include = ["gx_jax*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

@@ -1,7 +1,7 @@
 # Operator Runbook: GCP Deployment, TACC Login-Node Smoke Test & GPU Obtainability
 
 This runbook covers:
-1. **Stage 1**: deploy and verify the GCP stack: aurora-steer (Cloud Run + Vertex AI Gemini), BigQuery telemetry, GCS dataset bucket, containerized GX, private dashboard.
+1. **Stage 1**: deploy and verify the GCP stack: aurora-steer (Cloud Run + Gemini Enterprise Agent Platform, default `gemini-4-argon`), BigQuery telemetry, GCS dataset bucket, containerized GX, private dashboard.
 2. **Stage 2**: verify outbound HTTPS, authentication, telemetry ingestion and a live `/triage` round trip **from a TACC Vista or Lonestar6 login node**.
 3. **Stage 3**: GPU obtainability on GCP (Cloud Batch region rotation or GKE ComputeClasses).
 4. **Stage 4**: activate the TACC Slurm babysitter (`tacc-driver`).
@@ -34,7 +34,7 @@ ENABLE_DASHBOARD_IAP=true
 GCP_BATCH_CPU_ONLY=0
 ```
 
-`MODEL_ID` defaults to `gemini-4-argon`, a GA Vertex AI model; set `MODEL_ID=gemini-3.8-flash` for a lower-cost option. aurora-steer validates the ID at startup, and its `/healthz` startup probe keeps a broken revision from taking traffic.
+`MODEL_ID` defaults to `gemini-4-argon` on the Gemini Enterprise Agent Platform (`global` endpoint); set `MODEL_ID=gemini-3.8-flash` for a lower-cost option. aurora-steer validates the ID at startup, and its `/healthz` startup probe keeps a broken revision from taking traffic.
 
 ### 2. Deploy (`~10–40 min`; the first gx-runner build compiles GX)
 
@@ -90,7 +90,7 @@ From the workstation, `make tacc-smoke-test` does the same. It reads the token f
 The test checks, in order:
 1. `GET /health` (note: Cloud Run's Google Front End reserves `/healthz` on external `*.run.app` URLs, so external probes use `/health` or `/v1/healthz` while the internal Cloud Run startup probe uses `/healthz`);
 2. an authenticated `POST /v1/events`;
-3. a `POST` triage call that must come back from the live LLM path. The response header `X-Aurora-Decision` must be `llm`; an escalation from a dead Vertex AI path fails the test.
+3. a `POST` triage call that must come back from the live LLM path. The response header `X-Aurora-Decision` must be `llm`; an escalation from a dead Gemini Enterprise Agent Platform path fails the test.
 
 Smoke-test events use `environment = preflight`. They are stored flagged synthetic and are **excluded from every KPI view and from the dashboard**, which shows production rows only. To confirm ingestion, query the raw table:
 
@@ -141,16 +141,16 @@ Terraform does not create a GKE cluster. With an existing GKE Autopilot or node-
 ## Stage 4: Activate TACC Slurm babysitting (after Stage 2 passes)
 
 ```bash
-cd "$WORK"
+export CAMPAIGN_DIR="/path/to/gk-campaigns"    # any persistent shared TACC directory
 git clone https://github.com/jburby88/GoogleAcceleratorAutomatedGKSimulations.git
 cd GoogleAcceleratorAutomatedGKSimulations
 make install-tacc                        # .venv-tacc + dependency check
-mkdir -p "$WORK/gk-campaigns"
-cp simulations/hpc/config.example.json "$WORK/gk-campaigns/config.json"
-# Edit config.json: aurora_steer_url, queue/state/dataset dirs on $WORK ($SCRATCH is purged)
+mkdir -p "$CAMPAIGN_DIR"
+cp simulations/hpc/config.example.json "$CAMPAIGN_DIR/config.json"
+# Edit config.json: aurora_steer_url and absolute paths for queue/state/dataset dirs
 export AURORA_STEER_BEARER_TOKEN="<token>"
-.venv-tacc/bin/tacc-preflight --config "$WORK/gk-campaigns/config.json"
-.venv-tacc/bin/tacc-driver --config "$WORK/gk-campaigns/config.json" --once
+.venv-tacc/bin/tacc-preflight --config "$CAMPAIGN_DIR/config.json"
+.venv-tacc/bin/tacc-driver --config "$CAMPAIGN_DIR/config.json" --once
 ```
 
 For unattended runs from cron, use `simulations/hpc/scripts/ensure_running_cron.sh`. It pins the job to one login node (`TACC_EXPECTED_LOGIN_HOST`), takes a `flock`, and the driver adds a shared-filesystem lease. Keep the token out of the crontab line itself. See `simulations/hpc/README.md`.

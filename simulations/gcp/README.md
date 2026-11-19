@@ -50,5 +50,11 @@ docker build -f simulations/gcp/Dockerfile.gx-runner \
 - **Runtime user:** UID/GID 10001. Batch mounts the bucket with `--uid=10001 --gid=10001 --file-mode=664 --dir-mode=775 --o=allow_other` (`DEFAULT_GCS_MOUNT_OPTIONS`). GKE uses the CSI `mountOptions` `uid=10001,gid=10001,...`. The Cloud Run babysitter job mounts the bucket with `uid=10001,gid=10001`.
 - **Not yet built end to end:** the image has never been built against upstream GX. The build prints diagnostics and fails early if `Makefiles/Makefile.$GK_SYSTEM` or a dependency (MPI, cuTENSOR, NCCL, netCDF) is missing.
 
+## Cloud TPU Support (`gx-jax`)
+Set `"accelerator_family": "tpu"` (and `gx_tpu_container_image`) in the babysitter config to run the JAX/XLA port (`simulations/gx-jax`) on Cloud TPUs instead of CUDA GPUs:
+- **Cloud Batch:** Uses Spot `v6e-4` -> `v6e-8` -> `v5p-8` (with opt-in on-demand when `allow_on_demand=true`).
+- **GKE:** Uses the `gx-tpu-v6e` and `gx-tpu-v5p` Compute Classes in `k8s/compute-classes.yaml` (and `-ondemand` variants when `allow_on_demand=true`).
+- **Container image:** Built from `simulations/gcp/Dockerfile.gx-jax-tpu` (`--build-arg GX_COMMIT=<40-hex SHA>`), which installs `jax[tpu]` and verifies pure FP32 StableHLO output via `python3 -m gx_jax._verify_fp32_hlo`.
+
 ## Benchmarks
 `benchmarks/` holds the Cyclone Base Case GX decks. Their `run_meta.json` declares `sim_time_target` = `t_max` = 400.
