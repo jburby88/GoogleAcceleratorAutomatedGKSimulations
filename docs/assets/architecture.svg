@@ -1,0 +1,416 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 820" width="1280" height="820" role="img" aria-labelledby="arch-title arch-desc">
+  <title id="arch-title">UT Austin × Google.org AI for Science — System Architecture</title>
+  <desc id="arch-desc">End-to-end architecture showing the Google Cloud Control Plane (Cloud Run aurora-steer, Vertex AI Gemini, BigQuery, Dashboard), Backend 1 (TACC Vista/LoneStar6 Slurm with GENE and GX), Backend 2 (GCP Cloud Batch and GKE with C++ GX GPU and GX-JAX TPU), upstream ToBlick/mrx JAX MHD equilibria, shared GCS/$WORK dataset, and KR1/KR3 surrogate optimization loop.</desc>
+
+  <defs>
+    <style>
+      .font { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+      .title { font-size: 18px; font-weight: 700; fill: #0F172A; }
+      .subtitle { font-size: 11.8px; font-weight: 500; fill: #475569; }
+      .zone-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; }
+      .card-title { font-size: 13.5px; font-weight: 700; fill: #0F172A; }
+      .card-sub { font-size: 11.2px; font-weight: 500; fill: #334155; }
+      .card-muted { font-size: 10.4px; font-weight: 500; fill: #64748B; }
+      .pill-text { font-size: 10px; font-weight: 600; }
+      .edge-text { font-size: 10px; font-weight: 600; fill: #334155; }
+      .code-pill { font-size: 9.2px; font-weight: 600; fill: #0F172A; }
+      .path-text { font-size: 10px; font-weight: 600; }
+    </style>
+
+    <filter id="shadow" x="-4%" y="-6%" width="108%" height="116%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0F172A" flood-opacity="0.07"/>
+    </filter>
+
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F1F5F9"/>
+    </linearGradient>
+
+    <linearGradient id="jaxGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="50%" stop-color="#14B8A6"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#2563EB"/>
+    </marker>
+    <marker id="arrow-slate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#475569"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#C2410C"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#059669"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#7C3AED"/>
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#B45309"/>
+    </marker>
+  </defs>
+
+  <!-- Outer Canvas (renders cleanly on both GitHub light & dark themes) -->
+  <rect x="6" y="6" width="1268" height="808" rx="16" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+
+  <!-- Header Bar -->
+  <path d="M 22 6 H 1258 A 16 16 0 0 1 1274 22 V 78 H 6 V 22 A 16 16 0 0 1 22 6 Z" fill="url(#headerGrad)"/>
+  <line x1="6" y1="78" x2="1274" y2="78" stroke="#E2E8F0" stroke-width="1.2"/>
+
+  <!-- Header Title -->
+  <text x="32" y="38" class="font title">UT Austin × Google.org AI for Science — Platform Architecture</text>
+  <text x="32" y="59" class="font subtitle">Transport-Consistent Optimization of High-Beta Stellarators · Automated Gyrokinetic Babysitting on TACC Slurm &amp; Google Cloud GPU / TPU</text>
+
+  <!-- Partner / Platform Badges (Top Right) -->
+  <g transform="translate(866, 26)">
+    <!-- UT Austin Badge -->
+    <rect x="0" y="0" width="90" height="28" rx="14" fill="#FFF7ED" stroke="#FDBA74" stroke-width="1.2"/>
+    <circle cx="15" cy="14" r="6" fill="#BF5700"/>
+    <path d="M12.2 12.2 h5.6 M15 12.2 v4.2" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round"/>
+    <text x="27" y="18" class="font pill-text" fill="#9A3412">UT Austin</text>
+
+    <!-- Google Cloud Badge -->
+    <rect x="98" y="0" width="112" height="28" rx="14" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.2"/>
+    <g transform="translate(107, 7) scale(0.58)">
+      <path d="M12 5a6 6 0 0 1 5.6 3.8A4.2 4.2 0 0 1 18 17H7a4.5 4.5 0 0 1-.8-8.9A6 6 0 0 1 12 5z" fill="none" stroke="#4285F4" stroke-width="2.4"/>
+      <path d="M6.2 8.1A6 6 0 0 1 12 5a6 6 0 0 1 3.8 1.4" fill="none" stroke="#EA4335" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M4.2 14.2A4.5 4.5 0 0 1 6.2 8.1" fill="none" stroke="#FBBC05" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M7 17h11" fill="none" stroke="#34A853" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+    <text x="128" y="18" class="font pill-text" fill="#1D4ED8">Google Cloud</text>
+
+    <!-- JAX / XLA Badge -->
+    <rect x="218" y="0" width="84" height="28" rx="14" fill="#F5F3FF" stroke="#C4B5FD" stroke-width="1.2"/>
+    <rect x="227" y="8" width="12" height="12" rx="3" fill="url(#jaxGrad)"/>
+    <text x="245" y="18" class="font pill-text" fill="#5B21B6">JAX / XLA</text>
+
+    <!-- TACC Badge -->
+    <rect x="310" y="0" width="76" height="28" rx="14" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.2"/>
+    <rect x="319" y="8" width="12" height="12" rx="3" fill="#1E3A8A"/>
+    <path d="M322 12 h6 M325 12 v5" stroke="#F97316" stroke-width="1.6" stroke-linecap="round"/>
+    <text x="337" y="18" class="font pill-text" fill="#1E293B">TACC</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- BAND 1: GOOGLE CLOUD CONTROL PLANE                                    -->
+  <!-- ===================================================================== -->
+  <rect x="52" y="94" width="1196" height="142" rx="12" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <!-- GCP Zone Header -->
+  <g transform="translate(68, 104)">
+    <g transform="scale(0.68)">
+      <path d="M12 5a6 6 0 0 1 5.6 3.8A4.2 4.2 0 0 1 18 17H7a4.5 4.5 0 0 1-.8-8.9A6 6 0 0 1 12 5z" fill="none" stroke="#4285F4" stroke-width="2.4"/>
+      <path d="M6.2 8.1A6 6 0 0 1 12 5a6 6 0 0 1 3.8 1.4" fill="none" stroke="#EA4335" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M4.2 14.2A4.5 4.5 0 0 1 6.2 8.1" fill="none" stroke="#FBBC05" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M7 17h11" fill="none" stroke="#34A853" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+    <text x="22" y="12" class="font zone-label" fill="#1D4ED8">GOOGLE CLOUD CONTROL PLANE (CLOUD RUN · VERTEX AI GEMINI · BIGQUERY)</text>
+  </g>
+
+  <!-- Card 1A: aurora-steer -->
+  <g filter="url(#shadow)">
+    <rect x="68" y="126" width="420" height="96" rx="10" fill="#FFFFFF" stroke="#BFDBFE" stroke-width="1.3"/>
+  </g>
+  <!-- Cloud Run + Gemini Icon -->
+  <g transform="translate(82, 140)">
+    <rect x="0" y="0" width="36" height="36" rx="8" fill="#DBEAFE"/>
+    <path d="M10 10 L17 18 L10 26 L14 26 L21 18 L14 10 Z" fill="#2563EB"/>
+    <path d="M26 9 C26 13.5 27.5 15 32 15 C27.5 15 26 16.5 26 21 C26 16.5 24.5 15 20 15 C24.5 15 26 13.5 26 9 Z" fill="#7C3AED"/>
+  </g>
+  <text x="128" y="150" class="font card-title">aurora-steer</text>
+  <rect x="348" y="136" width="128" height="19" rx="5" fill="#F1F5F9" stroke="#E2E8F0"/>
+  <text x="412" y="148.5" text-anchor="middle" class="mono code-pill">platform/aurora-steer</text>
+  <text x="128" y="168" class="font card-sub">Cloud Run FastAPI + Google ADK · Vertex AI Gemini</text>
+  <text x="128" y="185" class="font card-muted">Loads OKF physics runbooks (simulations/skill/sim-babysitter/okf/)</text>
+  <g transform="translate(128, 194)">
+    <rect x="0" y="0" width="110" height="19" rx="9.5" fill="#EFF6FF" stroke="#BFDBFE"/>
+    <text x="55" y="13" text-anchor="middle" class="font pill-text" fill="#1E40AF">Allowlist Guardrails</text>
+    <rect x="118" y="0" width="110" height="19" rx="9.5" fill="#FEF2F2" stroke="#FECACA"/>
+    <text x="173" y="13" text-anchor="middle" class="font pill-text" fill="#991B1B">3-Strike Escalation</text>
+    <rect x="236" y="0" width="110" height="19" rx="9.5" fill="#F0FDF4" stroke="#BBF7D0"/>
+    <text x="291" y="13" text-anchor="middle" class="font pill-text" fill="#166534">Idempotent Triage</text>
+  </g>
+
+  <!-- Arrow: aurora-steer -> BigQuery -->
+  <line x1="488" y1="174" x2="532" y2="174" stroke="#2563EB" stroke-width="1.8" marker-end="url(#arrow-blue)"/>
+  <text x="512" y="164" text-anchor="middle" class="font edge-text">insertAll</text>
+  <text x="512" y="189" text-anchor="middle" class="font card-muted">+ audit</text>
+
+  <!-- Card 1B: BigQuery Telemetry -->
+  <g filter="url(#shadow)">
+    <rect x="538" y="126" width="334" height="96" rx="10" fill="#FFFFFF" stroke="#BFDBFE" stroke-width="1.3"/>
+  </g>
+  <!-- BigQuery Icon -->
+  <g transform="translate(552, 140)">
+    <rect x="0" y="0" width="36" height="36" rx="8" fill="#DBEAFE"/>
+    <circle cx="16.5" cy="16.5" r="9" fill="none" stroke="#2563EB" stroke-width="2.2"/>
+    <rect x="12.5" y="16" width="2.2" height="5" fill="#1D4ED8"/>
+    <rect x="15.5" y="13" width="2.2" height="8" fill="#1D4ED8"/>
+    <rect x="18.5" y="14.8" width="2.2" height="6.2" fill="#1D4ED8"/>
+    <line x1="23" y1="23" x2="28" y2="28" stroke="#2563EB" stroke-width="2.6" stroke-linecap="round"/>
+  </g>
+  <text x="598" y="150" class="font card-title">BigQuery Telemetry</text>
+  <rect x="748" y="136" width="112" height="19" rx="5" fill="#F1F5F9" stroke="#E2E8F0"/>
+  <text x="804" y="148.5" text-anchor="middle" class="mono code-pill">platform/telemetry</text>
+  <text x="598" y="168" class="font card-sub">Dataset: sim_babysitter_telemetry</text>
+  <text x="598" y="185" class="font card-muted">8 SQL KPI &amp; operational views · contract-tested</text>
+  <g transform="translate(598, 194)">
+    <rect x="0" y="0" width="110" height="19" rx="9.5" fill="#EFF6FF" stroke="#BFDBFE"/>
+    <text x="55" y="13" text-anchor="middle" class="font pill-text" fill="#1E40AF">Lifecycle Events</text>
+    <rect x="118" y="0" width="124" height="19" rx="9.5" fill="#F8FAFC" stroke="#CBD5E1"/>
+    <text x="180" y="13" text-anchor="middle" class="font pill-text" fill="#334155">Cloud Logging Sink</text>
+  </g>
+
+  <!-- Arrow: BigQuery -> Dashboard -->
+  <line x1="872" y1="174" x2="914" y2="174" stroke="#2563EB" stroke-width="1.8" marker-end="url(#arrow-blue)"/>
+  <text x="895" y="164" text-anchor="middle" class="font edge-text">8 SQL</text>
+  <text x="895" y="189" text-anchor="middle" class="font card-muted">views</text>
+
+  <!-- Card 1C: Private Dashboard -->
+  <g filter="url(#shadow)">
+    <rect x="920" y="126" width="312" height="96" rx="10" fill="#FFFFFF" stroke="#BFDBFE" stroke-width="1.3"/>
+  </g>
+  <!-- Dashboard + IAP Icon -->
+  <g transform="translate(934, 140)">
+    <rect x="0" y="0" width="36" height="36" rx="8" fill="#E0E7FF"/>
+    <rect x="8" y="10" width="20" height="14" rx="2.5" fill="none" stroke="#4338CA" stroke-width="2"/>
+    <polyline points="11,20 15,15 19,18 25,12" fill="none" stroke="#4338CA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="14" y1="27" x2="22" y2="27" stroke="#4338CA" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <text x="980" y="150" class="font card-title">Private Dashboard</text>
+  <rect x="1108" y="136" width="112" height="19" rx="5" fill="#F1F5F9" stroke="#E2E8F0"/>
+  <text x="1164" y="148.5" text-anchor="middle" class="mono code-pill">platform/dashboard</text>
+  <text x="980" y="168" class="font card-sub">Cloud Run + IAP (Streamlit · prod rows)</text>
+  <text x="980" y="185" class="font card-muted">Local DuckDB inspection · Terraform IaC</text>
+  <g transform="translate(980, 194)">
+    <rect x="0" y="0" width="108" height="19" rx="9.5" fill="#EEF2FF" stroke="#C7D2FE"/>
+    <text x="54" y="13" text-anchor="middle" class="font pill-text" fill="#3730A3">Campaign KPIs</text>
+    <rect x="116" y="0" width="104" height="19" rx="9.5" fill="#F8FAFC" stroke="#CBD5E1"/>
+    <text x="168" y="13" text-anchor="middle" class="font pill-text" fill="#334155">IAP Protected</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- CORRIDOR 1: EXECUTION BACKENDS -> AURORA-STEER                        -->
+  <!-- ===================================================================== -->
+  <!-- TACC -> aurora-steer (starts cleanly at top border of Backend 1) -->
+  <line x1="278" y1="288" x2="278" y2="226" stroke="#2563EB" stroke-width="1.9" marker-end="url(#arrow-blue)"/>
+  <rect x="168" y="252" width="220" height="20" rx="10" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1.1"/>
+  <text x="278" y="265.5" text-anchor="middle" class="font edge-text" fill="#1D4ED8">Outbound HTTPS + Bearer (&lt;2 KB)</text>
+
+  <!-- GCP Batch -> aurora-steer (starts cleanly at top border of Backend 2) -->
+  <path d="M 790 288 V 262 H 430 V 226" fill="none" stroke="#2563EB" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#arrow-blue)"/>
+  <rect x="520" y="252" width="194" height="20" rx="10" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1.1"/>
+  <text x="617" y="265.5" text-anchor="middle" class="font edge-text" fill="#1D4ED8">HTTPS + Bearer (&lt;2 KB JSON)</text>
+
+  <!-- ===================================================================== -->
+  <!-- BAND 2A: BACKEND 1 — TACC VISTA / LONESTAR6 (SLURM HPC)               -->
+  <!-- ===================================================================== -->
+  <rect x="52" y="288" width="582" height="252" rx="12" fill="#FFF7ED" stroke="#FDBA74" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <!-- TACC Zone Header -->
+  <g transform="translate(68, 298)">
+    <rect x="0" y="0" width="16" height="16" rx="4" fill="#BF5700"/>
+    <path d="M4 5.5 h8 M8 5.5 v6.5" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round"/>
+    <text x="24" y="12" class="font zone-label" fill="#9A3412">BACKEND 1: TACC VISTA / LONESTAR6 (SLURM HPC)</text>
+  </g>
+
+  <!-- Sub-card 2A-1: tacc-driver -->
+  <g filter="url(#shadow)">
+    <rect x="68" y="322" width="550" height="76" rx="10" fill="#FFFFFF" stroke="#FED7AA" stroke-width="1.3"/>
+  </g>
+  <g transform="translate(82, 342)">
+    <rect x="0" y="0" width="36" height="36" rx="8" fill="#FFEDD5"/>
+    <rect x="7" y="9" width="22" height="18" rx="3" fill="none" stroke="#C2410C" stroke-width="2"/>
+    <polyline points="11,15 15,18 11,21" fill="none" stroke="#C2410C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="17" y1="21" x2="24" y2="21" stroke="#C2410C" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <text x="128" y="345" class="font card-title">tacc-driver + SimulationWatchdog</text>
+  <rect x="444" y="331" width="162" height="19" rx="5" fill="#F1F5F9" stroke="#E2E8F0"/>
+  <text x="525" y="343.5" text-anchor="middle" class="mono code-pill">simulations/hpc · hpc-core</text>
+  <text x="128" y="364" class="font card-sub">Login Node Cron · Pure Python (0 Cloud/AI Deps) · Shared SchedulerBackend</text>
+  <text x="128" y="382" class="font card-muted">Auto-resumes Slurm TIMEOUTs (0 LLM calls) · Client-side allowlist check &amp; patchers</text>
+
+  <!-- Bidirectional Slurm arrow (46px gap for visible shafts) -->
+  <line x1="343" y1="402" x2="343" y2="440" stroke="#C2410C" stroke-width="1.8" marker-start="url(#arrow-orange)" marker-end="url(#arrow-orange)"/>
+  <rect x="236" y="411.5" width="214" height="19" rx="9.5" fill="#FFFFFF" stroke="#FDBA74" stroke-width="1.1"/>
+  <text x="343" y="424.5" text-anchor="middle" class="mono edge-text" fill="#9A3412">sbatch / squeue / sacct / scancel</text>
+
+  <!-- Sub-card 2A-2: Slurm Compute Nodes -->
+  <g filter="url(#shadow)">
+    <rect x="68" y="444" width="550" height="80" rx="10" fill="#FFFFFF" stroke="#FED7AA" stroke-width="1.3"/>
+  </g>
+  <g transform="translate(82, 466)">
+    <rect x="0" y="0" width="36" height="36" rx="8" fill="#FEF3C7"/>
+    <rect x="7" y="8" width="22" height="6" rx="1.5" fill="none" stroke="#B45309" stroke-width="1.8"/>
+    <rect x="7" y="16" width="22" height="6" rx="1.5" fill="none" stroke="#B45309" stroke-width="1.8"/>
+    <rect x="7" y="24" width="22" height="6" rx="1.5" fill="none" stroke="#B45309" stroke-width="1.8"/>
+    <circle cx="11" cy="11" r="1.2" fill="#B45309"/>
+    <circle cx="11" cy="19" r="1.2" fill="#B45309"/>
+    <circle cx="11" cy="27" r="1.2" fill="#B45309"/>
+  </g>
+  <text x="128" y="468" class="font card-title">Slurm Compute Nodes (GENE Fortran + TACC GX)</text>
+  <text x="128" y="487" class="font card-sub">High-Fidelity Gyrokinetic Validation · GH200 / CPU Partitions</text>
+  <text x="128" y="506" class="font card-muted">Heavy NetCDF / HDF5 checkpoints stay local on $WORK · Compact diagnostics only</text>
+
+  <!-- ===================================================================== -->
+  <!-- BAND 2B: BACKEND 2 — GCP CLOUD BATCH & GKE (GPU & TPU)                -->
+  <!-- ===================================================================== -->
+  <rect x="666" y="288" width="582" height="252" rx="12" fill="#F0FDF4" stroke="#86EFAC" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <!-- GCP Batch Zone Header -->
+  <g transform="translate(682, 298)">
+    <rect x="0" y="0" width="16" height="16" rx="4" fill="#059669"/>
+    <rect x="4" y="4" width="8" height="8" rx="1.5" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+    <text x="24" y="12" class="font zone-label" fill="#065F46">BACKEND 2: GCP CLOUD BATCH &amp; GKE (SERVERLESS GPU &amp; TPU)</text>
+  </g>
+
+  <!-- Sub-card 2B-1: gcp-gx-babysitter -->
+  <g filter="url(#shadow)">
+    <rect x="682" y="322" width="550" height="76" rx="10" fill="#FFFFFF" stroke="#BBF7D0" stroke-width="1.3"/>
+  </g>
+  <g transform="translate(696, 342)">
+    <rect x="0" y="0" width="36" height="36" rx="8" fill="#DCFCE7"/>
+    <circle cx="18" cy="18" r="10" fill="none" stroke="#059669" stroke-width="2"/>
+    <polyline points="18,12 18,18 22.5,20.5" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="742" y="345" class="font card-title">gcp-gx-babysitter</text>
+  <rect x="1116" y="331" width="104" height="19" rx="5" fill="#F1F5F9" stroke="#E2E8F0"/>
+  <text x="1168" y="343.5" text-anchor="middle" class="mono code-pill">simulations/gcp</text>
+  <text x="742" y="364" class="font card-sub">Cloud Run v2 Job (2m Scheduler) · Reuses SimulationWatchdog</text>
+  <text x="742" y="382" class="font card-muted">Spot preemption auto-resume &amp; OOM memory tier step-up (0 LLM calls)</text>
+
+  <!-- Arrows from babysitter to GPU & TPU (46px gap) -->
+  <line x1="814" y1="402" x2="814" y2="440" stroke="#059669" stroke-width="1.8" marker-start="url(#arrow-green)" marker-end="url(#arrow-green)"/>
+  <rect x="734" y="411.5" width="160" height="19" rx="9.5" fill="#FFFFFF" stroke="#86EFAC" stroke-width="1.1"/>
+  <text x="814" y="424.5" text-anchor="middle" class="mono edge-text" fill="#065F46">accelerator_family=gpu</text>
+
+  <line x1="1100" y1="402" x2="1100" y2="440" stroke="#059669" stroke-width="1.8" marker-start="url(#arrow-green)" marker-end="url(#arrow-green)"/>
+  <rect x="1020" y="411.5" width="160" height="19" rx="9.5" fill="#FFFFFF" stroke="#86EFAC" stroke-width="1.1"/>
+  <text x="1100" y="424.5" text-anchor="middle" class="mono edge-text" fill="#065F46">accelerator_family=tpu</text>
+
+  <!-- Sub-card 2B-2a: C++ GX GPU Container -->
+  <g filter="url(#shadow)">
+    <rect x="682" y="444" width="264" height="80" rx="10" fill="#FFFFFF" stroke="#BBF7D0" stroke-width="1.3"/>
+  </g>
+  <g transform="translate(694, 466)">
+    <rect x="0" y="0" width="34" height="34" rx="8" fill="#D1FAE5"/>
+    <rect x="8" y="8" width="18" height="18" rx="2.5" fill="none" stroke="#047857" stroke-width="1.9"/>
+    <rect x="13" y="13" width="8" height="8" rx="1" fill="#047857"/>
+    <path d="M12 5v3 M17 5v3 M22 5v3 M12 26v3 M17 26v3 M22 26v3 M5 12h3 M5 17h3 M5 22h3 M26 12h3 M26 17h3 M26 22h3" stroke="#047857" stroke-width="1.4"/>
+  </g>
+  <text x="736" y="466" class="font card-title">C++ GX GPU Container</text>
+  <text x="736" y="485" class="font card-sub">Spot NVIDIA L4 (default)</text>
+  <text x="736" y="504" class="font card-muted">Opt-in A100 / On-Demand · CUDA</text>
+
+  <!-- Sub-card 2B-2b: GX-JAX TPU Container -->
+  <g filter="url(#shadow)">
+    <rect x="968" y="444" width="264" height="80" rx="10" fill="#FFFFFF" stroke="#A7F3D0" stroke-width="1.5"/>
+  </g>
+  <g transform="translate(980, 466)">
+    <rect x="0" y="0" width="34" height="34" rx="8" fill="url(#jaxGrad)"/>
+    <rect x="8" y="8" width="7" height="7" rx="1.5" fill="#FFFFFF" fill-opacity="0.95"/>
+    <rect x="19" y="8" width="7" height="7" rx="1.5" fill="#FFFFFF" fill-opacity="0.75"/>
+    <rect x="8" y="19" width="7" height="7" rx="1.5" fill="#FFFFFF" fill-opacity="0.75"/>
+    <rect x="19" y="19" width="7" height="7" rx="1.5" fill="#FFFFFF" fill-opacity="0.95"/>
+  </g>
+  <text x="1022" y="466" class="font card-title">GX-JAX TPU Container</text>
+  <text x="1022" y="485" class="font card-sub">Spot TPU v6e / v5p · JAX/XLA</text>
+  <text x="1022" y="504" class="font card-muted">simulations/gx-jax · jax.vmap Sweeps</text>
+
+  <!-- ===================================================================== -->
+  <!-- CORRIDOR 2: BACKENDS <-> DATASET & ACTIVE-LEARNING FEEDBACK           -->
+  <!-- ===================================================================== -->
+  <!-- TACC <-> Dataset -->
+  <line x1="500" y1="544" x2="500" y2="592" stroke="#475569" stroke-width="1.8" marker-start="url(#arrow-slate)" marker-end="url(#arrow-slate)"/>
+  <rect x="394" y="558" width="212" height="20" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.1"/>
+  <text x="500" y="571.5" text-anchor="middle" class="font edge-text">Equilibria &amp; Harvest ($WORK)</text>
+
+  <!-- GCP Batch <-> Dataset -->
+  <line x1="780" y1="544" x2="780" y2="592" stroke="#059669" stroke-width="1.8" marker-start="url(#arrow-green)" marker-end="url(#arrow-green)"/>
+  <rect x="666" y="558" width="228" height="20" rx="10" fill="#FFFFFF" stroke="#86EFAC" stroke-width="1.1"/>
+  <text x="780" y="571.5" text-anchor="middle" class="font edge-text" fill="#065F46">GCS FUSE (.restart.nc) &amp; Harvest</text>
+
+  <!-- Surrogates -> GCP Batch (Active Learning) -->
+  <line x1="1096" y1="596" x2="1096" y2="544" stroke="#B45309" stroke-width="1.8" stroke-dasharray="5 3" marker-end="url(#arrow-amber)"/>
+  <rect x="1001" y="558" width="190" height="20" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.1"/>
+  <text x="1096" y="571.5" text-anchor="middle" class="font edge-text" fill="#92400E">Active-learning runs (GCP)</text>
+
+  <!-- ===================================================================== -->
+  <!-- BAND 3: UPSTREAM EQUILIBRIA · SHARED DATASET · SURROGATES (KR1/KR3)   -->
+  <!-- ===================================================================== -->
+
+  <!-- Card 3A: Upstream 3D MHD Equilibria -->
+  <g filter="url(#shadow)">
+    <rect x="52" y="596" width="276" height="158" rx="12" fill="#FAF5FF" stroke="#D8B4FE" stroke-width="1.4"/>
+  </g>
+  <text x="68" y="618" class="font zone-label" fill="#6B21A8">UPSTREAM 3D MHD EQUILIBRIA</text>
+  <g transform="translate(68, 632)">
+    <rect x="0" y="0" width="38" height="38" rx="9" fill="#EDE9FE"/>
+    <ellipse cx="19" cy="19" rx="13" ry="8" transform="rotate(-22 19 19)" fill="none" stroke="#7C3AED" stroke-width="1.9"/>
+    <ellipse cx="19" cy="19" rx="8.5" ry="4.5" transform="rotate(-22 19 19)" fill="none" stroke="#9333EA" stroke-width="1.5"/>
+    <circle cx="19" cy="19" r="2.2" fill="#6D28D9"/>
+  </g>
+  <text x="116" y="648" class="font card-title">ToBlick/mrx</text>
+  <text x="116" y="665" class="font card-sub">JAX 3D MHD Solver</text>
+  <line x1="68" y1="682" x2="312" y2="682" stroke="#E9D5FF" stroke-width="1"/>
+  <text x="68" y="700" class="font card-sub">• 3D broken-surface equilibria</text>
+  <text x="68" y="718" class="font card-sub">• Projected to nested flux surfaces</text>
+  <text x="68" y="736" class="font card-muted">• VMEC wout_*.nc &amp; GIST geometry</text>
+
+  <!-- Arrow: ToBlick/mrx -> Shared Dataset -->
+  <line x1="328" y1="675" x2="377" y2="675" stroke="#7C3AED" stroke-width="1.9" marker-end="url(#arrow-purple)"/>
+  <text x="354" y="664" text-anchor="middle" class="font edge-text" fill="#6B21A8">Projected</text>
+  <text x="354" y="691" text-anchor="middle" class="font card-muted">equilibria</text>
+
+  <!-- Card 3B: Shared Gyrokinetic Dataset -->
+  <g filter="url(#shadow)">
+    <rect x="382" y="596" width="516" height="158" rx="12" fill="#F0F9FF" stroke="#7DD3FC" stroke-width="1.4"/>
+  </g>
+  <g transform="translate(398, 608)">
+    <rect x="0" y="0" width="22" height="22" rx="5" fill="#0284C7"/>
+    <rect x="4.5" y="5.5" width="13" height="4" rx="1" fill="#FFFFFF"/>
+    <rect x="4.5" y="11.5" width="13" height="5" rx="1" fill="#FFFFFF" fill-opacity="0.85"/>
+    <text x="30" y="15" class="font zone-label" fill="#0369A1">GYROKINETIC TRAINING DATASET (GCS BUCKET &amp; TACC $WORK)</text>
+  </g>
+  <!-- Structured path boxes -->
+  <rect x="398" y="640" width="484" height="32" rx="7" fill="#FFFFFF" stroke="#BAE6FD" stroke-width="1.2"/>
+  <text x="410" y="660" class="mono path-text" fill="#0369A1">campaigns/&lt;id&gt;/equilibria/&lt;equilibrium_id&gt;/</text>
+
+  <rect x="398" y="680" width="484" height="32" rx="7" fill="#FFFFFF" stroke="#BAE6FD" stroke-width="1.2"/>
+  <text x="410" y="700" class="mono path-text" fill="#0F172A">campaigns/&lt;id&gt;/runs/&lt;run_id&gt;/{fluxes.json, run_manifest.json, sha256}</text>
+
+  <text x="398" y="734" class="font card-muted">Write-once dataset_eligible provenance · GCS FUSE mounts for .out.nc &amp; .restart.nc</text>
+
+  <!-- Arrow: Shared Dataset -> Surrogates -->
+  <line x1="898" y1="675" x2="945" y2="675" stroke="#2563EB" stroke-width="1.9" marker-end="url(#arrow-blue)"/>
+  <text x="923" y="664" text-anchor="middle" class="font edge-text" fill="#1D4ED8">Eligible</text>
+  <text x="923" y="691" text-anchor="middle" class="font card-muted">runs</text>
+
+  <!-- Card 3C: Surrogates & Stellarator Design (KR1 & KR3) -->
+  <g filter="url(#shadow)">
+    <rect x="950" y="596" width="298" height="158" rx="12" fill="#FEFCE8" stroke="#FDE047" stroke-width="1.4"/>
+  </g>
+  <text x="966" y="618" class="font zone-label" fill="#854D0E">SURROGATES &amp; DESIGN (KR1 · KR3)</text>
+  <g transform="translate(966, 632)">
+    <rect x="0" y="0" width="38" height="38" rx="9" fill="#FEF08A"/>
+    <circle cx="11" cy="13" r="2.8" fill="#A16207"/>
+    <circle cx="11" cy="25" r="2.8" fill="#A16207"/>
+    <circle cx="27" cy="19" r="3.2" fill="#CA8A04"/>
+    <line x1="13.5" y1="14" x2="24" y2="18" stroke="#A16207" stroke-width="1.7"/>
+    <line x1="13.5" y1="24" x2="24" y2="20" stroke="#A16207" stroke-width="1.7"/>
+  </g>
+  <text x="1014" y="648" class="font card-title">Surrogates &amp; Optimization</text>
+  <rect x="1014" y="654" width="84" height="18" rx="5" fill="#FFFFFF" stroke="#FDE047"/>
+  <text x="1056" y="666" text-anchor="middle" class="mono code-pill">surrogates/</text>
+  <line x1="966" y1="682" x2="1232" y2="682" stroke="#FEF08A" stroke-width="1"/>
+  <text x="966" y="700" class="font card-sub">• Leak-free split grouped by equilibrium_id</text>
+  <text x="966" y="718" class="font card-sub">• Multi-fidelity gyrokinetic surrogates</text>
+  <text x="966" y="736" class="font card-muted">• High-β (&gt;3%) coupled design &amp; active learning</text>
+
+  <!-- ===================================================================== -->
+  <!-- BOTTOM FEEDBACK RAIL: SURROGATES -> TACC HIGH-FIDELITY VALIDATION     -->
+  <!-- ===================================================================== -->
+  <path d="M 1099 754 V 786 H 28 V 360 H 63" fill="none" stroke="#B45309" stroke-width="1.8" stroke-dasharray="5 3" stroke-linejoin="round" marker-end="url(#arrow-amber)"/>
+  <rect x="394" y="776" width="356" height="20" rx="10" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.1"/>
+  <text x="572" y="789.5" text-anchor="middle" class="font edge-text" fill="#92400E">High-fidelity GENE validation queue (active learning → TACC)</text>
+</svg>

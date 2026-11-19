@@ -6,34 +6,9 @@ Open-source platform (Apache-2.0) developed under the UT Austin / Google.org Imp
 
 ## Architecture Overview
 
-```text
-                   ┌──────────────────────────────────────────┐
-                   │   aurora-steer (Cloud Run + Vertex AI)   │
-                   │  OKF runbooks + server-side guardrails   │
-                   │  BigQuery telemetry  →  private dashboard │
-                   └────────────▲────────────────▲────────────┘
-     Outbound HTTPS + Bearer    │                │  HTTPS + Bearer
-           (<2 KB JSON)         │                │  (<2 KB JSON)
-    ┌───────────────────────────┴──┐          ┌──┴───────────────────────────┐
-    │ Backend 1: TACC (tacc-driver)│          │ Backend 2: GCP (Cloud Batch) │
-    │ • GENE (Fortran) + TACC GX   │          │ • C++ GX (GPU) / GX-JAX (TPU)│
-    │ • Slurm (sbatch/squeue/sacct)│          │ • Spot L4 / TPU v6e & v5p    │
-    │ • Dataset on $WORK           │          │ • GCS FUSE checkpoints       │
-    └──────────────┬───────────────┘          └──────────────┬───────────────┘
-                   │  Dataset output                         │  Dataset output
-                   └────────────────────┬────────────────────┘
-                                        ▼
-    ┌────────────────────────┐   ┌──────────────────────────────────────┐
-    │ Upstream Equilibria:   │   │  Dataset (TACC $WORK / GCS bucket)   │
-    │ ToBlick/mrx (JAX MHD)  ├──►│  campaigns/<id>/equilibria/<eq_id>/  │
-    │ (projected geometries) │   │  campaigns/<id>/runs/<run_id>/       │
-    └────────────────────────┘   └──────────────────┬───────────────────┘
-                                                    ▼
-                                   Surrogate training & stellarator design
-                                                (KR1 / KR3)
-```
+![UT Austin × Google.org AI for Science Platform Architecture](docs/assets/architecture.svg)
 
-See [`docs/architecture.md`](docs/architecture.md) for the sequence diagrams.
+See [`docs/architecture.md`](docs/architecture.md) for the dual-backend babysitting sequence diagram and component details.
 
 ---
 

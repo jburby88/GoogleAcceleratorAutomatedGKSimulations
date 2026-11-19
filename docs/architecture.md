@@ -2,6 +2,11 @@
 
 ## 1. End-to-End Platform Architecture
 
+![UT Austin × Google.org AI for Science Platform Architecture](assets/architecture.svg)
+
+<details>
+<summary>Mermaid flowchart view</summary>
+
 ```mermaid
 flowchart TD
     subgraph EQ["Upstream 3D MHD Equilibria"]
@@ -55,6 +60,8 @@ flowchart TD
     KR3 -->|"High-uncertainty validation runs"| GB
     KR3 -->|"High-fidelity GENE validation"| TD
 ```
+
+</details>
 
 ---
 
