@@ -39,6 +39,13 @@ For Cloud TPU runtime dependencies:
 pip install "jax[tpu]>=0.7.0" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
 ```
 
+## Benchmarks & Physics Parity
+
+Full Cloud TPU (`v5p` and `v6e` Trillium) physics parity results, Mandell et al. (2024) Tables 1–2 step-time comparisons, validated 3D W7-X electromagnetic/NTFT stellarator benchmarks, and the runtime parameter reference are documented in [BENCHMARKS.md](BENCHMARKS.md):
+
+- **Physics parity:** Nonlinear Cyclone Base Case `Q_i / Q_GB = 6.91 ± 0.85` (within `0.55σ` of upstream `GX`'s `7.4 ± 0.9`); nonlinear 3D W7-X stellarator `Q_i / Q_GB = 2.13 ± 0.12` (`5.9%` from `stella`'s `2.26`, `6.72×` faster than upstream `GX` at `t_max = 200` on `4× v6e`); `~1e-6` relative agreement across 72 TPU runs spanning 1–8 chips (`v5p`, `v5p-16`, `v6e`).
+- **Throughput:** Equal-chip parity to `1.32×` faster (`1.52×` `dt`-adjusted) than published upstream C++/CUDA `GX` on `A100` (`65.27 ms/step` and `1,403 MDOF/s` at `91.6M` DOFs on `8× v5p-16`), and `3.63–4.55` full W7-X equilibria/min end-to-end with `jax.vmap` multi-surface sweeps.
+
 ## Attribution
 
 Derived from the mathematical formulation and MIT-licensed reference implementation of **GX** (Copyright (c) 2011-2022 Noah R. Mandell, William D. Dorland, and the GX team; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)):
