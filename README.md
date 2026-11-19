@@ -47,7 +47,7 @@ All recovery strategies and allowed numerical knobs live in Markdown/YAML under 
 ## Key Design & Safety Principles
 
 1. **Lightweight HPC Footprint**: The TACC client (`platform/hpc-core/` and `simulations/hpc/`) has zero heavy cloud or AI dependencies. It runs on standard Python with `requests`, `f90nml`, and `tomlkit`, keeping login node installations clean and trouble-free.
-2. **Compact Telemetry**: Instead of streaming heavy simulation files, executors send small diagnostic summaries (<2 KB of scalar metrics and recent tail logs) over HTTPS. Large NetCDF/HDF5 simulation files stay in local storage (`$WORK` or GCS).
+2. **Compact Telemetry**: Instead of streaming heavy simulation files, executors send small diagnostic summaries (<2 KB of scalar metrics and recent tail logs) over HTTPS. Large NetCDF/HDF5 simulation files stay in local/shared storage (TACC filesystem or GCS).
 3. **Strict Parameter Boundaries**: Automated triage can only modify allowlisted numerical knobs (`nx`, `ny`, `nz`, `dt_max`, `cfl_fraction`, `hyperdiffusion_coeff`). It never alters physics profiles, equilibrium geometry, or driving gradients. Any proposed modification outside safe bounds is safely rejected.
 4. **Pragmatic Automation**: Routine operational interruptions (like Slurm timeouts or Spot preemptions) resume automatically from checkpoints without calling the LLM. If a simulation fails repeatedly on the same issue, it escalates to a human after two tries.
 5. **Reproducible Dataset Provenance**: Every finished run writes an immutable manifest recording git hashes, equilibrium sources, parameter modifications, and convergence criteria, guaranteeing clean provenance for downstream ML surrogates.
@@ -91,29 +91,25 @@ Retrieve the token when a TACC operator needs it:
 gcloud secrets versions access latest --secret=aurora-steer-bearer-token --project="$GOOGLE_CLOUD_PROJECT"
 ```
 
-### 2. Verify outbound HTTPS from a TACC login node (Vista / Lonestar6)
+### 2. Activate the TACC Slurm babysitter (`tacc-driver`) for GENE & GX
+
+Outbound HTTPS from TACC login nodes to `aurora-steer` is verified (operators can re-run `python3 scripts/tacc_smoke_test.py` after token rotation or new deploys; see [`docs/RUNBOOK_DEMO_AND_TACC_SMOKE_TEST.md`](docs/RUNBOOK_DEMO_AND_TACC_SMOKE_TEST.md)).
 
 ```bash
-export AURORA_STEER_URL="https://aurora-steer-xxxx-uc.a.run.app"
-export AURORA_STEER_BEARER_TOKEN="<token from Secret Manager>"
-python3 scripts/tacc_smoke_test.py      # Python >= 3.8 standard library only, no venv needed
-```
-
-### 3. Activate the TACC Slurm babysitter (`tacc-driver`) for GENE & GX
-
-```bash
-cd "$WORK" && git clone https://github.com/jburby88/GoogleAcceleratorAutomatedGKSimulations.git
+export CAMPAIGN_DIR="/path/to/gk-campaigns"    # any persistent shared TACC directory
+git clone https://github.com/jburby88/GoogleAcceleratorAutomatedGKSimulations.git
 cd GoogleAcceleratorAutomatedGKSimulations
-make install-tacc                         # .venv-tacc: lightweight TACC runtime
-cp simulations/hpc/config.example.json "$WORK/gk-campaigns/config.json"   # keep dataset/state on $WORK, not $SCRATCH
+make install-tacc                              # .venv-tacc: lightweight TACC runtime
+mkdir -p "$CAMPAIGN_DIR"
+cp simulations/hpc/config.example.json "$CAMPAIGN_DIR/config.json"
 export AURORA_STEER_BEARER_TOKEN="<token>"
-.venv-tacc/bin/tacc-preflight --config "$WORK/gk-campaigns/config.json"
-.venv-tacc/bin/tacc-driver --config "$WORK/gk-campaigns/config.json" --once
+.venv-tacc/bin/tacc-preflight --config "$CAMPAIGN_DIR/config.json"
+.venv-tacc/bin/tacc-driver --config "$CAMPAIGN_DIR/config.json" --once
 ```
 
 For unattended runs from cron, pinned to one login node with a lock, see [`simulations/hpc/README.md`](simulations/hpc/README.md).
 
-### 4. Containerized GX on GCP Cloud Batch
+### 3. Containerized GX on GCP Cloud Batch
 
 After `make gcp-deploy`, Cloud Scheduler starts the `gcp-gx-babysitter` Cloud Run job every 2 minutes. The job processes runs queued under `gs://<project>-gk-dataset/queue/pending/`. GPU jobs need GPU quota. `GCP_BATCH_CPU_ONLY=1` is a CPU-only smoke-test mode that runs as `environment=sim`, so it never enters KPIs or the dataset.
 

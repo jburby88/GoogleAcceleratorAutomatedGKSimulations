@@ -35,7 +35,7 @@ flowchart TD
         GB <-->|"accelerator_family=tpu"| CB_TPU
     end
 
-    subgraph DATA["Gyrokinetic Training Dataset (TACC $WORK & GCS Bucket)"]
+    subgraph DATA["Gyrokinetic Training Dataset (TACC Shared Storage & GCS Bucket)"]
         GCS_EQ["campaigns/<id>/equilibria/<equilibrium_id>/"]
         GCS_RUNS["campaigns/<id>/runs/<run_id>/{input, fluxes.json, checksums.sha256, run_manifest.json}"]
     end
@@ -72,7 +72,7 @@ Automated babysitting works identically across **TACC Slurm** and **GCP Cloud Ba
 ```mermaid
 sequenceDiagram
     autonumber
-    participant GCS as "Dataset & Queue ($WORK / GCS Bucket)"
+    participant GCS as "Dataset & Queue (TACC Shared Storage / GCS Bucket)"
     participant WD as "Watchdog (tacc-driver OR gcp-gx-babysitter)"
     participant EXEC as "Scheduler (TACC Slurm OR GCP Batch/GKE GPU & TPU)"
     participant BRAIN as "aurora-steer (Cloud Run + gemini-4-argon)"

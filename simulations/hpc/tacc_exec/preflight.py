@@ -52,14 +52,14 @@ def collect_warnings(config: dict[str, Any]) -> list[str]:
     elif _purge_risk(Path(dataset_dir)):
         warnings.append(
             f"dataset_output_dir {dataset_dir} is on a purged scratch filesystem; TACC deletes "
-            "files not accessed for ~10 days. Use $WORK (or sync to GCS) for the dataset."
+            "files not accessed for ~10 days. Use a persistent shared directory (or sync to GCS) for the dataset."
         )
     for key in ("state_dir", "queue_dir"):
         value = config.get(key)
         if value and _purge_risk(Path(value)):
             warnings.append(
                 f"{key} {value} is on a purged scratch filesystem; state or queued inputs can be "
-                "deleted while jobs wait. Prefer $WORK."
+                "deleted while jobs wait. Prefer a persistent shared directory."
             )
     if str(config.get("environment", "prod")) != "prod":
         warnings.append(

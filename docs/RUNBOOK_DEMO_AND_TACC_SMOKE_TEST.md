@@ -141,16 +141,16 @@ Terraform does not create a GKE cluster. With an existing GKE Autopilot or node-
 ## Stage 4: Activate TACC Slurm babysitting (after Stage 2 passes)
 
 ```bash
-cd "$WORK"
+export CAMPAIGN_DIR="/path/to/gk-campaigns"    # any persistent shared TACC directory
 git clone https://github.com/jburby88/GoogleAcceleratorAutomatedGKSimulations.git
 cd GoogleAcceleratorAutomatedGKSimulations
 make install-tacc                        # .venv-tacc + dependency check
-mkdir -p "$WORK/gk-campaigns"
-cp simulations/hpc/config.example.json "$WORK/gk-campaigns/config.json"
-# Edit config.json: aurora_steer_url, queue/state/dataset dirs on $WORK ($SCRATCH is purged)
+mkdir -p "$CAMPAIGN_DIR"
+cp simulations/hpc/config.example.json "$CAMPAIGN_DIR/config.json"
+# Edit config.json: aurora_steer_url and absolute paths for queue/state/dataset dirs
 export AURORA_STEER_BEARER_TOKEN="<token>"
-.venv-tacc/bin/tacc-preflight --config "$WORK/gk-campaigns/config.json"
-.venv-tacc/bin/tacc-driver --config "$WORK/gk-campaigns/config.json" --once
+.venv-tacc/bin/tacc-preflight --config "$CAMPAIGN_DIR/config.json"
+.venv-tacc/bin/tacc-driver --config "$CAMPAIGN_DIR/config.json" --once
 ```
 
 For unattended runs from cron, use `simulations/hpc/scripts/ensure_running_cron.sh`. It pins the job to one login node (`TACC_EXPECTED_LOGIN_HOST`), takes a `flock`, and the driver adds a shared-filesystem lease. Keep the token out of the crontab line itself. See `simulations/hpc/README.md`.

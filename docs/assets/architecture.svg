@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 820" width="1280" height="820" role="img" aria-labelledby="arch-title arch-desc">
   <title id="arch-title">UT Austin × Google.org AI for Science — System Architecture</title>
-  <desc id="arch-desc">End-to-end architecture showing the Google Cloud Control Plane (Cloud Run aurora-steer, Gemini Enterprise Agent Platform with gemini-4-argon, BigQuery, Dashboard), Backend 1 (TACC Vista/LoneStar6 Slurm with GENE and GX), Backend 2 (GCP Cloud Batch and GKE with C++ GX GPU and GX-JAX TPU), upstream ToBlick/mrx JAX MHD equilibria, shared GCS/$WORK dataset, and KR1/KR3 surrogate optimization loop.</desc>
+  <desc id="arch-desc">End-to-end architecture showing the Google Cloud Control Plane (Cloud Run aurora-steer, Gemini Enterprise Agent Platform with gemini-4-argon, BigQuery, Dashboard), Backend 1 (TACC Vista/LoneStar6 Slurm with GENE and GX), Backend 2 (GCP Cloud Batch and GKE with C++ GX GPU and GX-JAX TPU), upstream ToBlick/mrx JAX MHD equilibria, shared GCS and TACC dataset, and KR1/KR3 surrogate optimization loop.</desc>
 
   <defs>
     <style>
@@ -251,7 +251,7 @@
   </g>
   <text x="128" y="468" class="font card-title">Slurm Compute Nodes (GENE Fortran + TACC GX)</text>
   <text x="128" y="487" class="font card-sub">High-Fidelity Gyrokinetic Validation · GH200 / CPU Partitions</text>
-  <text x="128" y="506" class="font card-muted">Heavy NetCDF / HDF5 checkpoints stay local on $WORK · Compact diagnostics only</text>
+  <text x="128" y="506" class="font card-muted">Heavy NetCDF / HDF5 checkpoints stay local on TACC storage · Compact diagnostics only</text>
 
   <!-- ===================================================================== -->
   <!-- BAND 2B: BACKEND 2 — GCP CLOUD BATCH & GKE (GPU & TPU)                -->
@@ -323,7 +323,7 @@
   <!-- TACC <-> Dataset -->
   <line x1="500" y1="544" x2="500" y2="592" stroke="#475569" stroke-width="1.8" marker-start="url(#arrow-slate)" marker-end="url(#arrow-slate)"/>
   <rect x="394" y="558" width="212" height="20" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.1"/>
-  <text x="500" y="571.5" text-anchor="middle" class="font edge-text">Equilibria &amp; Harvest ($WORK)</text>
+  <text x="500" y="571.5" text-anchor="middle" class="font edge-text">Equilibria &amp; Harvest (TACC FS)</text>
 
   <!-- GCP Batch <-> Dataset -->
   <line x1="780" y1="544" x2="780" y2="592" stroke="#059669" stroke-width="1.8" marker-start="url(#arrow-green)" marker-end="url(#arrow-green)"/>
@@ -370,7 +370,7 @@
     <rect x="0" y="0" width="22" height="22" rx="5" fill="#0284C7"/>
     <rect x="4.5" y="5.5" width="13" height="4" rx="1" fill="#FFFFFF"/>
     <rect x="4.5" y="11.5" width="13" height="5" rx="1" fill="#FFFFFF" fill-opacity="0.85"/>
-    <text x="30" y="15" class="font zone-label" fill="#0369A1">GYROKINETIC TRAINING DATASET (GCS BUCKET &amp; TACC $WORK)</text>
+    <text x="30" y="15" class="font zone-label" fill="#0369A1">GYROKINETIC TRAINING DATASET (GCS BUCKET &amp; TACC STORAGE)</text>
   </g>
   <!-- Structured path boxes -->
   <rect x="398" y="640" width="484" height="32" rx="7" fill="#FFFFFF" stroke="#BAE6FD" stroke-width="1.2"/>

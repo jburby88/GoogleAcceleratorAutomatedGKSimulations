@@ -27,8 +27,8 @@ Crash-safety guarantees (see `tacc_exec/watchdog.py` module docstring):
 
 1. `make install-tacc` (creates `.venv-tacc` with verified dependencies) and copy `config.example.json` to `config.json`.
 2. Edit `config.json`:
-   - Use **absolute paths** on `$WORK` for `queue_dir`, `state_dir` and `dataset_output_dir`. Relative paths resolve against the directory of `config.json`, never the cron working directory. `$VARS` that are unset under cron are rejected.
-   - Do **not** put `dataset_output_dir` or `state_dir` on `$SCRATCH`: TACC purges files that have not been accessed for about 10 days. `tacc-preflight` warns about this.
+   - Use **absolute paths** on a persistent shared filesystem for `queue_dir`, `state_dir` and `dataset_output_dir` (any configured directory name works). Relative paths resolve against the directory of `config.json`, never the cron working directory. `$VARS` that are unset under cron are rejected.
+   - Avoid putting `dataset_output_dir` or `state_dir` on a short-retention purged scratch filesystem (such as TACC `$SCRATCH`, which purges inactive files after ~10 days). `tacc-preflight` warns if it detects a purged scratch path.
    - `allowed_parameters` must mirror `skill/sim-babysitter/okf/concepts/allowed-parameters.md` (names, bounds, `gene_path`, `gx_path`, `warm_restart_allowed`). The driver refuses to start if a path disagrees with the patchers.
 3. Export the bearer token (never commit it): `export AURORA_STEER_BEARER_TOKEN=...`. For cron, keep it in a `chmod 600` env file sourced by the crontab line.
 4. `tacc-preflight --config config.json` (prints warnings), then `python3 scripts/tacc_smoke_test.py`.
