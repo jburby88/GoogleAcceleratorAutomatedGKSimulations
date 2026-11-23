@@ -4,6 +4,7 @@ Open-source platform (Apache-2.0) developed under the UT Austin / Google.org AI 
 
 ---
 
+<<<<<<< HEAD
 ## Architecture Overview
 
 ```text
@@ -52,7 +53,10 @@ GoogleAcceleratorAutomatedGKSimulations/
 │   ├── hpc/                       # Backend 1 (TACC Slurm): watchdog, GENE/GX patchers, cron driver
 │   ├── gcp/                       # Backend 2 (GCP Cloud Batch / GKE): containerized GX
 │   └── docs/                      # OPEN_QUESTIONS.md, METRICS.md, COST_ESTIMATE.md, RUNBOOKS.md
-├── surrogates/            # Leak-free dataset loader, augmented Lagrangian optimization, active learning hooks
+├── surrogates/
+│   ├── kr1_surrogate/     # Leak-free dataset loader & augmented Lagrangian optimization
+│   ├── kr3_design/        # Active learning validation queue hooks
+│   └── itg_surrogate/     # JAX/Flax periodic 1D CNN ITG heat-flux surrogate, OOD registry/sweeps, & GKE TPU jobs
 ├── docs/                  # Architecture, OKR map, implementation plan, operator runbook
 ├── scripts/               # Boundary checks, GCP deploy tool, TACC smoke test (+ tests)
 └── tests/e2e/             # Dual-backend end-to-end test
@@ -156,4 +160,4 @@ make coverage       # make test with coverage
 
 CI runs linting and hermetic tests across Python 3.11–3.13 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Deployments can be triggered via GitHub Actions ([`.github/workflows/deploy-cloudrun.yml`](.github/workflows/deploy-cloudrun.yml)) or locally via `make gcp-deploy`.
 
-See also [`docs/architecture.md`](docs/architecture.md), [`docs/OKR_MAP.md`](docs/OKR_MAP.md), [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), and [`simulations/docs/OPEN_QUESTIONS.md`](simulations/docs/OPEN_QUESTIONS.md).
+See also [`docs/architecture.md`](docs/architecture.md), [`docs/OKR_MAP.md`](docs/OKR_MAP.md), [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), [`simulations/docs/OPEN_QUESTIONS.md`](simulations/docs/OPEN_QUESTIONS.md), [`surrogates/itg_surrogate/README.md`](surrogates/itg_surrogate/README.md), and [`surrogates/itg_surrogate/gke/README.md`](surrogates/itg_surrogate/gke/README.md).

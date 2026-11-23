@@ -1,0 +1,88 @@
+# Kubernetes Indexed Job manifest template that fans out all 4 registered
+# `itg_surrogate` ablation sweeps in parallel across Cloud TPU nodes:
+#   index 0 -> architecture_ladder
+#   index 1 -> ood_regularization
+#   index 2 -> weight_decay_scan
+#   index 3 -> normalization_diagnostic
+# Rendered and submitted via `make -C gke deploy-all-sweeps`.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app: itg-surrogate
+    workload: tpu-sweep-matrix
+    run-id: "${RUN_ID}"
+spec:
+  completions: 4
+  parallelism: ${PARALLEL_SWEEPS}
+  completionMode: Indexed
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: itg-surrogate
+        workload: tpu-sweep-matrix
+        run-id: "${RUN_ID}"
+      annotations:
+        gke-gcsfuse/volumes: "true"
+    spec:
+      serviceAccountName: ${KSA_NAME}
+      restartPolicy: OnFailure
+      nodeSelector:
+        cloud.google.com/gke-tpu-accelerator: "${TPU_ACCELERATOR}"
+        cloud.google.com/gke-tpu-topology: "${TPU_TOPOLOGY}"
+      tolerations:
+        - key: google.com/tpu
+          operator: Exists
+        - key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      containers:
+        - name: itg-surrogate-tpu
+          image: "${IMAGE_URI}:${IMAGE_TAG}"
+          imagePullPolicy: Always
+          env:
+            - name: SWEEP_INDEXED
+              value: "1"
+            - name: EPOCHS
+              value: "${EPOCHS}"
+            - name: NUM_SEEDS
+              value: "${NUM_SEEDS}"
+            - name: WITH_XGBOOST
+              value: "${WITH_XGBOOST}"
+            - name: RUN_UNIT_TESTS
+              value: "${RUN_UNIT_TESTS}"
+            - name: RUN_ID
+              value: "${RUN_ID}"
+            - name: GCS_MOUNT_PATH
+              value: "/gcs"
+            - name: GCS_DATASET_OBJECT
+              value: "${GCS_DATASET_OBJECT}"
+            - name: GCS_RESULTS_PREFIX
+              value: "${GCS_RESULTS_PREFIX}"
+          resources:
+            requests:
+              google.com/tpu: "${TPU_CHIPS}"
+            limits:
+              google.com/tpu: "${TPU_CHIPS}"
+          volumeMounts:
+            - name: gcs-bucket
+              mountPath: /gcs
+              readOnly: false
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: gcs-bucket
+          csi:
+            driver: gcsfuse.csi.storage.gke.io
+            volumeAttributes:
+              bucketName: "${GCS_BUCKET}"
+              mountOptions: "implicit-dirs"
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi

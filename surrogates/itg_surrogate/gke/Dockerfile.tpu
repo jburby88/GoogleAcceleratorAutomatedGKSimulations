@@ -1,0 +1,36 @@
+# Container image for running `itg_surrogate` sweeps on GKE Cloud TPU nodes.
+# Built from the repository root via `make -C surrogates/itg_surrogate/gke build` (Cloud Build).
+FROM python:3.12-slim-bookworm
+
+ARG JAX_VERSION=0.11.2
+
+# PYTHONUNBUFFERED=1 ensures live epoch & sweep progress streams immediately to `kubectl logs`.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    MPLBACKEND=Agg
+
+WORKDIR /workspace
+
+# Install `jax[tpu]` and `itg_surrogate` together in one resolution step so `jax`, `jaxlib`,
+# `libtpu`, and `flax` versions stay strictly aligned.
+COPY surrogates/itg_surrogate/pyproject.toml surrogates/itg_surrogate/README.md ./surrogates/itg_surrogate/
+COPY surrogates/itg_surrogate/src ./surrogates/itg_surrogate/src
+COPY surrogates/itg_surrogate/tests ./surrogates/itg_surrogate/tests
+COPY surrogates/itg_surrogate/gke/entrypoint_sweep.sh /workspace/entrypoint_sweep.sh
+
+RUN chmod +x /workspace/entrypoint_sweep.sh && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+      "jax[tpu]==${JAX_VERSION}" \
+      "./surrogates/itg_surrogate[baselines,dev]" \
+      -f https://storage.googleapis.com/jax-releases/libtpu_releases.html && \
+    pip freeze > /workspace/pip-freeze.txt && \
+    JAX_PLATFORMS=cpu python -c \
+    "import jax, jaxlib, itg_surrogate; from importlib.metadata import version; \
+    print('jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'libtpu', version('libtpu'), 'itg_surrogate', itg_surrogate.__version__)" && \
+    JAX_PLATFORMS=cpu itg-surrogate list > /dev/null && \
+    JAX_PLATFORMS=cpu pytest -o cache_dir=/tmp/pytest_cache /workspace/surrogates/itg_surrogate/tests -q
+
+ENTRYPOINT ["/workspace/entrypoint_sweep.sh"]

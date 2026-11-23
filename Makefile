@@ -24,6 +24,7 @@ TEST_DIRS := \
 	simulations/hpc/tests \
 	simulations/gcp/tests \
 	surrogates/tests \
+	surrogates/itg_surrogate/tests \
 	scripts/tests \
 	tests/e2e
 
@@ -36,12 +37,13 @@ TEST_UNSET := AURORA_STEER_URL AURORA_STEER_BEARER_TOKEN AURORA_STEER_TOKEN AURO
 	GCP_BATCH_CANDIDATE_REGIONS VPC_NAME_PREFIX VPC_SUBNET_CIDR ENABLE_CLOUD_NAT \
 	GCP_BATCH_NO_EXTERNAL_IP USE_CLOUD_BUILD
 TEST_ENV := env $(foreach v,$(TEST_UNSET),-u $(v)) NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost
-COV_PACKAGES := hpc_core tacc_exec gcp_exec app kr1_surrogate kr3_design gk_surrogates db streamlit_app theme
+COV_PACKAGES := hpc_core tacc_exec gcp_exec app kr1_surrogate kr3_design gk_surrogates itg_surrogate db streamlit_app theme
 
 TF_DIR := platform/infra/terraform
-SHELL_SCRIPTS := scripts/deploy_gcp_demo.sh simulations/hpc/scripts/ensure_running_cron.sh
+SHELL_SCRIPTS := scripts/deploy_gcp_demo.sh simulations/hpc/scripts/ensure_running_cron.sh \
+	surrogates/itg_surrogate/gke/entrypoint_sweep.sh
 DOCKERFILES := platform/aurora-steer/Dockerfile platform/dashboard/Dockerfile \
-	simulations/gcp/Dockerfile.gx-runner
+	simulations/gcp/Dockerfile.gx-runner surrogates/itg_surrogate/gke/Dockerfile.tpu
 TERRAFORM ?= terraform
 SHELLCHECK ?= shellcheck
 HADOLINT ?= hadolint
@@ -98,6 +100,7 @@ install:
 		-e "./simulations/gcp[dev]" \
 		-e "./platform/dashboard[dev]" \
 		-e "./surrogates[dev]" \
+		-e "./surrogates/itg_surrogate[dev]" \
 		"pytest-cov>=5,<8"
 
 install-tacc:
