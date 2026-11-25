@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import math
 import pathlib
 from collections.abc import Sequence
 from typing import Any
@@ -76,6 +77,17 @@ def _apply_overrides(
     return updated
 
 
+def _sanitize_json_floats(value: Any) -> Any:
+    """Replaces non-finite floats (`NaN`/`Inf`) with `None` for strict RFC-8259 JSON."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _sanitize_json_floats(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_json_floats(v) for v in value]
+    return value
+
+
 def _cmd_train(args: argparse.Namespace) -> None:
     from itg_surrogate.data import load_stellarator_h5  # pylint: disable=g-import-not-at-top
     from itg_surrogate.models.tabular import run_xgboost_baselines  # pylint: disable=g-import-not-at-top
@@ -89,7 +101,15 @@ def _cmd_train(args: argparse.Namespace) -> None:
     else:
         exps = [_apply_overrides(get_experiment(args.experiment), args.epochs, args.num_seeds)]
 
-    dataset = load_stellarator_h5(args.h5_path, config=exps[0].data_split)
+    ref_split = exps[0].data_split
+    for exp in exps[1:]:
+        if exp.data_split != ref_split:
+            raise ValueError(
+                f"All experiments in a single CLI sweep must share one DataSplitConfig; "
+                f"{exp.name!r} differs from {exps[0].name!r}."
+            )
+
+    dataset = load_stellarator_h5(args.h5_path, config=ref_split)
     print(
         f"Loaded unseen-stellarator split from {args.h5_path}: "
         f"Train={len(dataset.split.train_idx):,} ({dataset.split.n_train_groups:,} groups) | "
@@ -148,7 +168,9 @@ def _cmd_train(args: argparse.Namespace) -> None:
     if args.output_json:
         out_path = pathlib.Path(args.output_json)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(payload, indent=2) + "\n")
+        out_path.write_text(
+            json.dumps(_sanitize_json_floats(payload), indent=2, allow_nan=False) + "\n"
+        )
         print(f"Saved JSON metrics summary to {out_path}")
 
 

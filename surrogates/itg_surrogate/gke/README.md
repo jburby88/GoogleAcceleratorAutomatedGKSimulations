@@ -93,7 +93,7 @@ Configure these five variables in `surrogates/itg_surrogate/gke/gcp.env` (see [`
 | **TPU v5e (8 chips)** | `ct5lp-hightpu-8t` | `tpu-v5-lite-podslice` | `2x4` | `8` | `us-west4-a`, `us-central1-a` |
 | **TPU v5e (4 chips)** | `ct5lp-hightpu-4t` | `tpu-v5-lite-podslice` | `2x2` | `4` | `us-west4-a`, `us-central1-a` |
 
-- On an **8-chip** single-host node (`ct6e-standard-8t` or `ct5lp-hightpu-8t`), all `num_seeds=8` ensemble members of each sweep run train **simultaneously in 1 GSPMD `Mesh(devices, ('ens',))` wave**.
+- On an **8-chip** single-host node (`ct6e-standard-8t` or `ct5lp-hightpu-8t`), all `num_seeds=8` ensemble members of each sweep run train **simultaneously in 1 GSPMD `Mesh(devices, ('ensemble',))` wave**.
 - On a **4-chip** single-host node (`ct5p-hightpu-4t`, `ct6e-standard-4t`, or `ct5lp-hightpu-4t`), `num_seeds=8` executes automatically in two 4-chip waves (or `NUM_SEEDS=4` in a single wave).
 
 ---
@@ -137,7 +137,7 @@ Conservative 15-epoch validation smoke run on 4 TPU chips (verifies GCS Fuse mou
 make -C surrogates/itg_surrogate/gke deploy EXPERIMENT=leading EPOCHS=15 NUM_SEEDS=4 WITH_XGBOOST=1
 ```
 
-Full 80-epoch single ablation sweep (`architecture_ladder`, `ood_regularization`, `weight_decay_scan`, or `normalization_diagnostic`):
+Full 110-epoch single ablation sweep (`architecture_ladder`, `ood_regularization`, `weight_decay_scan`, or `normalization_diagnostic`):
 
 ```bash
 make -C surrogates/itg_surrogate/gke deploy SWEEP=ood_regularization

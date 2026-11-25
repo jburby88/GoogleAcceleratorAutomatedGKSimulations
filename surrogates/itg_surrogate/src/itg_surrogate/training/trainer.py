@@ -131,6 +131,11 @@ def train_experiment(
     verbose: bool = True,
 ) -> ExperimentRunResult:
     """Trains `experiment.num_seeds` CNNs sharded across devices via `jax.sharding`."""
+    if experiment.data_split != dataset.config:
+        raise ValueError(
+            f"Experiment {experiment.name!r} expects data_split={experiment.data_split}, "
+            f"but dataset was prepared with config={dataset.config}."
+        )
     configure_jax_float32()
     mesh_ctx = create_ensemble_mesh(experiment.num_seeds)
     model = StellaratorPeriodicCNN(config=experiment.arch)
@@ -269,7 +274,7 @@ def train_experiment(
             new_bs,
             state["best_batch_stats"],
         )
-        best_val_mse = jnp.minimum(val_mse, state["best_val_mse"])
+        best_val_mse = jnp.where(improved, val_mse, state["best_val_mse"])
 
         return {
             "params": new_params,

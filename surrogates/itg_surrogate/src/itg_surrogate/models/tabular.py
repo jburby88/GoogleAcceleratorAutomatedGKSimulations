@@ -8,6 +8,7 @@ import numpy as np
 
 from itg_surrogate.data.dataset import PreparedStellaratorDataset
 from itg_surrogate.data.features import compute_3_tabular_features, compute_paper_12_features
+from itg_surrogate.training.metrics import compute_per_class_r2, compute_r2
 
 
 @dataclasses.dataclass(frozen=True)
@@ -20,12 +21,6 @@ class TabularBaselineResult:
     unstable_test_r2: float
     per_class_test_r2: dict[str, float]
     test_predictions: np.ndarray
-
-
-def _r2_score(targets: np.ndarray, preds: np.ndarray) -> float:
-    ss_res = np.sum((targets - preds) ** 2)
-    ss_tot = np.sum((targets - np.mean(targets)) ** 2)
-    return float(1.0 - ss_res / ss_tot)
 
 
 def run_xgboost_baselines(
@@ -74,18 +69,15 @@ def run_xgboost_baselines(
         va_pred = reg.predict(x_mat[va])
         te_pred = reg.predict(x_mat[te])
 
-        per_cls: dict[str, float] = {}
-        for c_id, desc in enumerate(dataset.equilibrium_descriptions):
-            c_mask = cls_te == c_id
-            if np.any(c_mask):
-                per_cls[desc] = _r2_score(y_te[c_mask], te_pred[c_mask])
+        per_cls = compute_per_class_r2(y_te, te_pred, cls_te, dataset.equilibrium_descriptions)
+        unstable_r2 = compute_r2(y_te[uns_te], te_pred[uns_te]) if np.any(uns_te) else float("nan")
 
         results.append(
             TabularBaselineResult(
                 name=name,
-                val_r2=_r2_score(y_va, va_pred),
-                test_r2=_r2_score(y_te, te_pred),
-                unstable_test_r2=_r2_score(y_te[uns_te], te_pred[uns_te]),
+                val_r2=compute_r2(y_va, va_pred),
+                test_r2=compute_r2(y_te, te_pred),
+                unstable_test_r2=unstable_r2,
                 per_class_test_r2=per_cls,
                 test_predictions=te_pred.astype(np.float32),
             )

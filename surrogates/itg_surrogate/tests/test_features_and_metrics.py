@@ -92,6 +92,35 @@ class FeaturesAndMetricsTest(unittest.TestCase):
         self.assertEqual(set(res.selected_indices.tolist()), {0, 1})
         self.assertGreater(res.test_r2, 0.999)
 
+    def test_validation_topk_selection_ignores_nan_diverged_candidates(self) -> None:
+        rng = np.random.RandomState(456)
+        q_val = rng.uniform(0.2, 15.0, size=32).astype(np.float32)
+        q_test = rng.uniform(0.2, 15.0, size=32).astype(np.float32)
+        y_val = np.log1p(q_val).astype(np.float32)
+        y_test = np.log1p(q_test).astype(np.float32)
+        unstable_test = q_test > 0.1
+        eq_class_test = np.zeros(32, dtype=np.int64)
+
+        noise = rng.normal(scale=0.03, size=32).astype(np.float32)
+        nan_row = np.full(32, np.nan, dtype=np.float32)
+        val_preds = np.vstack([nan_row, y_val + noise, y_val - noise]).astype(np.float32)
+        test_preds = np.vstack([nan_row, y_test + noise, y_test - noise]).astype(np.float32)
+
+        res = select_validation_topk_ensemble(
+            val_member_preds=val_preds,
+            test_member_preds=test_preds,
+            y_val=y_val,
+            y_test=y_test,
+            q_test_true=q_test,
+            unstable_test_mask=unstable_test,
+            test_equilibrium_class=eq_class_test,
+            equilibrium_descriptions=("Class0",),
+        )
+        self.assertEqual(res.best_k, 2)
+        self.assertEqual(set(res.selected_indices.tolist()), {1, 2})
+        self.assertTrue(np.isfinite(res.val_r2))
+        self.assertGreater(res.test_r2, 0.999)
+
 
 if __name__ == "__main__":
     unittest.main()

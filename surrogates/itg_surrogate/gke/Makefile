@@ -50,7 +50,9 @@ EPOCHS ?=
 NUM_SEEDS ?=
 WITH_XGBOOST ?= 0
 RUN_UNIT_TESTS ?= 1
-RUN_ID ?= $(shell date -u +"%Y%m%d-%H%M%S")
+ifeq ($(origin RUN_ID), undefined)
+  RUN_ID := $(shell date -u +"%Y%m%d-%H%M%S")
+endif
 
 IMAGE_URI = $(REGION)-docker.pkg.dev/$(PROJECT_ID)/$(AR_REPO)/$(IMAGE_NAME)
 
@@ -64,8 +66,12 @@ else
   SLUG := $(subst _,-,$(SWEEP))
 endif
 
-JOB_NAME ?= itg-$(SLUG)-$(RUN_ID)
-MATRIX_JOB_NAME ?= itg-all-sweeps-$(RUN_ID)
+ifeq ($(origin JOB_NAME), undefined)
+  JOB_NAME := itg-$(SLUG)-$(RUN_ID)
+endif
+ifeq ($(origin MATRIX_JOB_NAME), undefined)
+  MATRIX_JOB_NAME := itg-all-sweeps-$(RUN_ID)
+endif
 
 ENVSUBST_VARS := '$$JOB_NAME $$K8S_NAMESPACE $$RUN_ID $$KSA_NAME $$TPU_ACCELERATOR $$TPU_TOPOLOGY $$TPU_CHIPS $$IMAGE_URI $$IMAGE_TAG $$SWEEP_NAME $$EXPERIMENT_NAME $$EPOCHS $$NUM_SEEDS $$WITH_XGBOOST $$RUN_UNIT_TESTS $$GCS_DATASET_OBJECT $$GCS_RESULTS_PREFIX $$GCS_BUCKET $$PARALLEL_SWEEPS'
 
@@ -184,53 +190,41 @@ build: check-env
 		--config="$(GKE_DIR)/cloudbuild.yaml" \
 		--substitutions="_IMAGE_URI=$(IMAGE_URI),_IMAGE_TAG=$(IMAGE_TAG),_JAX_VERSION=$(JAX_VERSION)"
 
+define render_manifest
+JOB_NAME="$(1)" \
+K8S_NAMESPACE="$(K8S_NAMESPACE)" \
+RUN_ID="$(RUN_ID)" \
+KSA_NAME="$(KSA_NAME)" \
+TPU_ACCELERATOR="$(TPU_ACCELERATOR)" \
+TPU_TOPOLOGY="$(TPU_TOPOLOGY)" \
+TPU_CHIPS="$(TPU_CHIPS)" \
+IMAGE_URI="$(IMAGE_URI)" \
+IMAGE_TAG="$(IMAGE_TAG)" \
+SWEEP_NAME="$(SWEEP_NAME)" \
+EXPERIMENT_NAME="$(EXPERIMENT_NAME)" \
+EPOCHS="$(EPOCHS)" \
+NUM_SEEDS="$(NUM_SEEDS)" \
+WITH_XGBOOST="$(WITH_XGBOOST)" \
+RUN_UNIT_TESTS="$(RUN_UNIT_TESTS)" \
+GCS_DATASET_OBJECT="$(GCS_DATASET_OBJECT)" \
+GCS_RESULTS_PREFIX="$(GCS_RESULTS_PREFIX)" \
+GCS_BUCKET="$(GCS_BUCKET)" \
+PARALLEL_SWEEPS="$(PARALLEL_SWEEPS)" \
+envsubst $(ENVSUBST_VARS) < "$(2)"
+endef
+
 render:
-	@JOB_NAME="$(JOB_NAME)" \
-	K8S_NAMESPACE="$(K8S_NAMESPACE)" \
-	RUN_ID="$(RUN_ID)" \
-	KSA_NAME="$(KSA_NAME)" \
-	TPU_ACCELERATOR="$(TPU_ACCELERATOR)" \
-	TPU_TOPOLOGY="$(TPU_TOPOLOGY)" \
-	TPU_CHIPS="$(TPU_CHIPS)" \
-	IMAGE_URI="$(IMAGE_URI)" \
-	IMAGE_TAG="$(IMAGE_TAG)" \
-	SWEEP_NAME="$(SWEEP_NAME)" \
-	EXPERIMENT_NAME="$(EXPERIMENT_NAME)" \
-	EPOCHS="$(EPOCHS)" \
-	NUM_SEEDS="$(NUM_SEEDS)" \
-	WITH_XGBOOST="$(WITH_XGBOOST)" \
-	RUN_UNIT_TESTS="$(RUN_UNIT_TESTS)" \
-	GCS_DATASET_OBJECT="$(GCS_DATASET_OBJECT)" \
-	GCS_RESULTS_PREFIX="$(GCS_RESULTS_PREFIX)" \
-	GCS_BUCKET="$(GCS_BUCKET)" \
-	envsubst $(ENVSUBST_VARS) < "$(GKE_DIR)/job-tpu-sweep.yaml"
+	@$(call render_manifest,$(JOB_NAME),$(GKE_DIR)/job-tpu-sweep.yaml)
 
 render-all-sweeps:
-	@JOB_NAME="$(MATRIX_JOB_NAME)" \
-	K8S_NAMESPACE="$(K8S_NAMESPACE)" \
-	RUN_ID="$(RUN_ID)" \
-	KSA_NAME="$(KSA_NAME)" \
-	TPU_ACCELERATOR="$(TPU_ACCELERATOR)" \
-	TPU_TOPOLOGY="$(TPU_TOPOLOGY)" \
-	TPU_CHIPS="$(TPU_CHIPS)" \
-	IMAGE_URI="$(IMAGE_URI)" \
-	IMAGE_TAG="$(IMAGE_TAG)" \
-	EPOCHS="$(EPOCHS)" \
-	NUM_SEEDS="$(NUM_SEEDS)" \
-	WITH_XGBOOST="$(WITH_XGBOOST)" \
-	RUN_UNIT_TESTS="$(RUN_UNIT_TESTS)" \
-	GCS_DATASET_OBJECT="$(GCS_DATASET_OBJECT)" \
-	GCS_RESULTS_PREFIX="$(GCS_RESULTS_PREFIX)" \
-	GCS_BUCKET="$(GCS_BUCKET)" \
-	PARALLEL_SWEEPS="$(PARALLEL_SWEEPS)" \
-	envsubst $(ENVSUBST_VARS) < "$(GKE_DIR)/job-tpu-all-sweeps.yaml"
+	@$(call render_manifest,$(MATRIX_JOB_NAME),$(GKE_DIR)/job-tpu-all-sweeps.yaml)
 
 deploy: check-env
-	@$(MAKE) --no-print-directory render JOB_NAME="$(JOB_NAME)" RUN_ID="$(RUN_ID)" | $(KUBECTL) apply -f -
+	@$(call render_manifest,$(JOB_NAME),$(GKE_DIR)/job-tpu-sweep.yaml) | $(KUBECTL) apply -f -
 	@echo "Submitted TPU job $(JOB_NAME) -> results will write to gs://$(GCS_BUCKET)/$(GCS_RESULTS_PREFIX)/$(RUN_ID)/"
 
 deploy-all-sweeps: check-env
-	@$(MAKE) --no-print-directory render-all-sweeps MATRIX_JOB_NAME="$(MATRIX_JOB_NAME)" RUN_ID="$(RUN_ID)" | $(KUBECTL) apply -f -
+	@$(call render_manifest,$(MATRIX_JOB_NAME),$(GKE_DIR)/job-tpu-all-sweeps.yaml) | $(KUBECTL) apply -f -
 	@echo "Submitted 4-way Indexed TPU job $(MATRIX_JOB_NAME) -> results will write to gs://$(GCS_BUCKET)/$(GCS_RESULTS_PREFIX)/$(RUN_ID)/"
 
 status:
@@ -239,10 +233,14 @@ status:
 logs:
 	@TARGET_JOB="$(JOB)"; \
 	if [[ -z "$$TARGET_JOB" ]]; then \
-		TARGET_JOB=$$($(KUBECTL) get jobs -n "$(K8S_NAMESPACE)" -l app=itg-surrogate --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}'); \
+		TARGET_JOB=$$($(KUBECTL) get jobs -n "$(K8S_NAMESPACE)" -l app=itg-surrogate --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null || true); \
+	fi; \
+	if [[ -z "$$TARGET_JOB" ]]; then \
+		echo "No active itg-surrogate jobs found in namespace $(K8S_NAMESPACE)." >&2; \
+		exit 1; \
 	fi; \
 	echo "Streaming logs for job/$$TARGET_JOB ..."; \
-	$(KUBECTL) logs -n "$(K8S_NAMESPACE)" "job/$$TARGET_JOB" --all-containers=true -f
+	$(KUBECTL) logs -n "$(K8S_NAMESPACE)" -l "job-name=$$TARGET_JOB" --all-containers=true --prefix=true --max-log-requests=8 -f
 
 clean-jobs:
 	$(KUBECTL) delete jobs -n "$(K8S_NAMESPACE)" -l app=itg-surrogate --ignore-not-found=true

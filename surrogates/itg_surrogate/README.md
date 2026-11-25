@@ -7,9 +7,10 @@ JAX / Flax / Optax implementation of periodic 1D convolutional neural network (`
 ## Directory Layout
 
 ```text
-itg_surrogate/
+surrogates/itg_surrogate/
 ├── pyproject.toml
 ├── README.md
+├── gke/                         # GKE Cloud TPU Dockerfile, Cloud Build, Makefile & batch/v1 Jobs
 ├── src/itg_surrogate/
 │   ├── cli.py                   # `itg-surrogate` CLI (list, show, train / sweep)
 │   ├── data/
@@ -31,9 +32,11 @@ itg_surrogate/
 │       ├── leading.py           # Checked-in leading baseline-to-beat & OOD benchmark metrics
 │       └── sweeps.py            # Checked-in named ablation sweeps & documented anti-patterns
 └── tests/
-    ├── test_registry.py         # Validates registry configs, sweeps, and serialization
-    ├── test_splits.py           # Verifies 0.00% equilibrium & QUASR leakage + stratification
-    └── test_symmetry_and_cnn.py # Verifies exact Z_96 invariance, D_96 involution & sharding
+    ├── test_features_and_metrics.py # Verifies 3/12-feature shapes, shift invariance & top-K*
+    ├── test_gke_and_cli_json.py     # Verifies hermetic GKE YAML rendering & CLI JSON export
+    ├── test_registry.py             # Validates registry configs, sweeps, and serialization
+    ├── test_splits.py               # Verifies 0.00% equilibrium & QUASR leakage + stratification
+    └── test_symmetry_and_cnn.py     # Verifies exact Z_96 invariance, D_96 involution & sharding
 ```
 
 ---
@@ -86,7 +89,7 @@ When deploying a surrogate inside a stellarator optimization loop to evaluate **
 ## Quickstart
 
 ```bash
-cd itg_surrogate
+cd surrogates/itg_surrogate
 pip install -e ".[baselines,dev]"
 
 # Inspect the leading baseline-to-beat and registered ablation sweeps:

@@ -18,7 +18,7 @@ spec:
   completions: 4
   parallelism: ${PARALLEL_SWEEPS}
   completionMode: Indexed
-  backoffLimit: 2
+  backoffLimit: 8
   ttlSecondsAfterFinished: 86400
   template:
     metadata:
@@ -30,7 +30,7 @@ spec:
         gke-gcsfuse/volumes: "true"
     spec:
       serviceAccountName: ${KSA_NAME}
-      restartPolicy: OnFailure
+      restartPolicy: Never
       nodeSelector:
         cloud.google.com/gke-tpu-accelerator: "${TPU_ACCELERATOR}"
         cloud.google.com/gke-tpu-topology: "${TPU_TOPOLOGY}"

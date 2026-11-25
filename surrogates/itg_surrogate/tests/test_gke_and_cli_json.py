@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -12,10 +13,22 @@ import h5py
 import numpy as np
 import yaml
 
+from itg_surrogate.cli import _sanitize_json_floats
 from itg_surrogate.cli import main as cli_main
 
 PACKAGE_DIR = pathlib.Path(__file__).resolve().parents[1]
 GKE_DIR = PACKAGE_DIR / "gke"
+
+_HERMETIC_UNSET_KEYS = (
+    "TPU_MACHINE_TYPE",
+    "TPU_ACCELERATOR",
+    "TPU_TOPOLOGY",
+    "TPU_CHIPS",
+    "PARALLEL_SWEEPS",
+    "K8S_NAMESPACE",
+    "KSA_NAME",
+    "IMAGE_TAG",
+)
 
 
 class GkeManifestAndCliJsonTest(unittest.TestCase):
@@ -23,13 +36,16 @@ class GkeManifestAndCliJsonTest(unittest.TestCase):
         if not GKE_DIR.is_dir():
             self.skipTest("GKE directory not bundled in minimal runtime container")
 
+        clean_env = {k: v for k, v in os.environ.items() if k not in _HERMETIC_UNSET_KEYS}
+
         # Syntax-check entrypoint_sweep.sh
         subprocess.run(
             ["bash", "-n", str(GKE_DIR / "entrypoint_sweep.sh")],
             check=True,
+            env=clean_env,
         )
 
-        # Render single-sweep Job manifest
+        # Render single-sweep Job manifest hermetically (ignoring any local gcp.env)
         single_out = subprocess.check_output(
             [
                 "make",
@@ -37,12 +53,14 @@ class GkeManifestAndCliJsonTest(unittest.TestCase):
                 str(GKE_DIR),
                 "--no-print-directory",
                 "render",
+                "ENV_FILE=/dev/null",
                 "PROJECT_ID=test-proj",
                 "GCS_BUCKET=test-bucket",
                 "SWEEP=ood_regularization",
                 "RUN_ID=20261105-010000",
             ],
             text=True,
+            env=clean_env,
         )
         self.assertNotIn("${", single_out)
         doc = yaml.safe_load(single_out)
@@ -52,6 +70,7 @@ class GkeManifestAndCliJsonTest(unittest.TestCase):
         self.assertEqual(pod_meta["annotations"]["gke-gcsfuse/volumes"], "true")
 
         pod_spec = doc["spec"]["template"]["spec"]
+        self.assertEqual(pod_spec["restartPolicy"], "Never")
         self.assertEqual(
             pod_spec["nodeSelector"]["cloud.google.com/gke-tpu-accelerator"],
             "tpu-v6e-slice",
@@ -72,17 +91,27 @@ class GkeManifestAndCliJsonTest(unittest.TestCase):
                 str(GKE_DIR),
                 "--no-print-directory",
                 "render-all-sweeps",
+                "ENV_FILE=/dev/null",
                 "PROJECT_ID=test-proj",
                 "GCS_BUCKET=test-bucket",
                 "RUN_ID=20261105-010000",
             ],
             text=True,
+            env=clean_env,
         )
         self.assertNotIn("${", matrix_out)
         matrix_doc = yaml.safe_load(matrix_out)
         self.assertEqual(matrix_doc["spec"]["completionMode"], "Indexed")
         self.assertEqual(matrix_doc["spec"]["completions"], 4)
         self.assertEqual(matrix_doc["spec"]["parallelism"], 4)
+        self.assertEqual(matrix_doc["spec"]["backoffLimit"], 8)
+        self.assertEqual(matrix_doc["spec"]["template"]["spec"]["restartPolicy"], "Never")
+
+    def test_sanitize_json_floats_produces_strict_rfc8259_json(self) -> None:
+        raw = {"ok": 0.99, "bad": float("nan"), "nested": [float("inf"), -1.5]}
+        sanitized = _sanitize_json_floats(raw)
+        encoded = json.dumps(sanitized, allow_nan=False)
+        self.assertEqual(json.loads(encoded), {"ok": 0.99, "bad": None, "nested": [None, -1.5]})
 
     def test_cli_train_writes_structured_output_json(self) -> None:
         rng = np.random.RandomState(0)

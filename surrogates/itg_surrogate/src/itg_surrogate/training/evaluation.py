@@ -128,7 +128,9 @@ def eval_ensemble_sharded(
     else:
         preds = np.asarray(eval_jit(sharded_params, z_dev, s_dev))
 
-    if eval_d96_reflection and d96_transform is not None:
+    if eval_d96_reflection:
+        if d96_transform is None:
+            raise ValueError("d96_transform must be provided when eval_d96_reflection=True.")
         z_refl_dev = jax.device_put(d96_transform.reflect_numpy(z_np), mesh_ctx.replicated_sharding)
         if use_bn:
             preds_refl = np.asarray(

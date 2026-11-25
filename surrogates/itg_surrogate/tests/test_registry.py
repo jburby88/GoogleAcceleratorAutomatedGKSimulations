@@ -17,7 +17,13 @@ from itg_surrogate.registry import (
     list_experiments,
     list_sweeps,
 )
-from itg_surrogate.registry.specs import ArchConfig, DataSplitConfig
+from itg_surrogate.registry.specs import (
+    ArchConfig,
+    AugmentationConfig,
+    DataSplitConfig,
+    ExperimentConfig,
+    OptimizerConfig,
+)
 
 
 class RegistryTest(unittest.TestCase):
@@ -59,6 +65,16 @@ class RegistryTest(unittest.TestCase):
             ArchConfig(conv_channels=(32, 32, 32, 32))
         with self.assertRaises(ValueError):
             ArchConfig(use_residual=False, drop_path_rate=0.1)
+        with self.assertRaises(ValueError):
+            OptimizerConfig(num_epochs=0)
+        with self.assertRaises(ValueError):
+            OptimizerConfig(batch_size=0)
+        with self.assertRaises(ValueError):
+            AugmentationConfig(eval_num_shifts=0)
+        with self.assertRaises(ValueError):
+            ExperimentConfig(name="   ", description="empty name")
+        with self.assertRaises(ValueError):
+            ExperimentConfig(name="zero_seeds", description="invalid", num_seeds=0)
 
     def test_cli_list_and_show_commands(self) -> None:
         buf_list = io.StringIO()

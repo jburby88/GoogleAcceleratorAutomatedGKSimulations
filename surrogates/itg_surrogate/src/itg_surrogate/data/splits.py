@@ -190,6 +190,11 @@ def make_stellarator_grouped_split(
         [i for i, g in enumerate(canonical_groups) if g in test_groups],
         dtype=np.int64,
     )
+    if len(train_idx) == 0 or len(val_idx) == 0 or len(test_idx) == 0:
+        raise ValueError(
+            "Dataset has too few canonical stellarator groups per stratum to form non-empty "
+            f"train/val/test splits (got sizes {len(train_idx)}/{len(val_idx)}/{len(test_idx)})."
+        )
 
     split = StellaratorSplitIndices(
         train_idx=train_idx,

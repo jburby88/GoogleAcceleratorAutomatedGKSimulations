@@ -130,6 +130,20 @@ class OptimizerConfig:
     weight_decay: float = 1e-2
     mask_kernels_only: bool = True
 
+    def __post_init__(self) -> None:
+        if self.num_epochs < 1:
+            raise ValueError(f"num_epochs must be >= 1, got {self.num_epochs}.")
+        if self.batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {self.batch_size}.")
+        if self.warmup_epochs < 0:
+            raise ValueError(f"warmup_epochs must be >= 0, got {self.warmup_epochs}.")
+        if self.init_lr <= 0.0 or self.peak_lr <= 0.0 or self.end_lr <= 0.0:
+            raise ValueError("Learning rates (init_lr, peak_lr, end_lr) must be positive.")
+        if self.grad_clip_norm <= 0.0:
+            raise ValueError(f"grad_clip_norm must be > 0, got {self.grad_clip_norm}.")
+        if self.weight_decay < 0.0:
+            raise ValueError(f"weight_decay must be >= 0, got {self.weight_decay}.")
+
 
 @dataclasses.dataclass(frozen=True)
 class AugmentationConfig:
@@ -159,6 +173,14 @@ class AugmentationConfig:
     eval_d96_reflection: bool = False
     eval_chunk_size: int = 512
 
+    def __post_init__(self) -> None:
+        if self.input_noise_std < 0.0:
+            raise ValueError(f"input_noise_std must be >= 0, got {self.input_noise_std}.")
+        if self.eval_num_shifts < 1:
+            raise ValueError(f"eval_num_shifts must be >= 1, got {self.eval_num_shifts}.")
+        if self.eval_chunk_size < 1:
+            raise ValueError(f"eval_chunk_size must be >= 1, got {self.eval_chunk_size}.")
+
 
 @dataclasses.dataclass(frozen=True)
 class BenchmarkRecord:
@@ -186,6 +208,12 @@ class ExperimentConfig:
     num_seeds: int = 8
     base_seed: int = 4000
     reference_benchmark: BenchmarkRecord | None = None
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("ExperimentConfig.name must be non-empty.")
+        if self.num_seeds < 1:
+            raise ValueError(f"num_seeds must be >= 1, got {self.num_seeds}.")
 
     def to_dict(self) -> dict[str, Any]:
         """Serializes the full experiment configuration to a plain dictionary."""

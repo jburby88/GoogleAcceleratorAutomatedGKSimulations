@@ -67,18 +67,23 @@ def select_validation_topk_ensemble(
 ) -> ValidationSelectedEnsembleResult:
     """Orders candidate models by validation MSE and selects optimal `K*` on val."""
     num_members = val_member_preds.shape[0]
+    if num_members < 1:
+        raise ValueError("select_validation_topk_ensemble requires at least 1 candidate member.")
     val_mses = np.array(
         [float(np.mean((y_val - val_member_preds[i]) ** 2)) for i in range(num_members)],
         dtype=np.float64,
     )
-    order = np.argsort(val_mses)
+    safe_mses = np.where(np.isfinite(val_mses), val_mses, np.inf)
+    order = np.argsort(safe_mses, kind="stable")
     ordered_val = val_member_preds[order]
     ordered_test = test_member_preds[order]
 
-    val_r2_curve = [
-        compute_r2(y_val, np.mean(ordered_val[:k], axis=0)) for k in range(1, num_members + 1)
-    ]
-    best_k = int(np.argmax(val_r2_curve)) + 1
+    val_r2_curve = np.array(
+        [compute_r2(y_val, np.mean(ordered_val[:k], axis=0)) for k in range(1, num_members + 1)],
+        dtype=np.float64,
+    )
+    safe_r2 = np.where(np.isfinite(val_r2_curve), val_r2_curve, -np.inf)
+    best_k = int(np.argmax(safe_r2)) + 1 if np.any(np.isfinite(val_r2_curve)) else 1
     selected_indices = order[:best_k]
 
     ens_mean = np.mean(ordered_test[:best_k], axis=0)

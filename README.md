@@ -4,7 +4,6 @@ Open-source platform (Apache-2.0) developed under the UT Austin / Google.org AI 
 
 ---
 
-<<<<<<< HEAD
 ## Architecture Overview
 
 ```text

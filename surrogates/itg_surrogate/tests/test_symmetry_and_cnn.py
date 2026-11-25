@@ -176,9 +176,14 @@ class SymmetryAndCNNTest(unittest.TestCase):
                 eval_d96_reflection=True,
                 eval_chunk_size=16,
             ),
+            data_split=split_cfg,
             num_seeds=4,
             base_seed=99,
         )
+
+        mismatched = ExperimentConfig(name="mismatch", description="wrong split")
+        with self.assertRaises(ValueError):
+            train_experiment(mismatched, ds, verbose=False)
 
         result = train_experiment(exp, ds, verbose=False)
         self.assertEqual(result.test_predictions.shape, (4, len(split.test_idx)))
