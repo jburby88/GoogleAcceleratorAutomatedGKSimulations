@@ -654,7 +654,7 @@ def check_public_repo_hygiene() -> list[str]:
         return _is_non_source_dir(rel.name) or rel.as_posix() in HYGIENE_SKIP_REL_DIRS
 
     for path in _walk_files(REPO_ROOT, skip, errors, "PUBLIC-HYGIENE"):
-        if path.name == ".env" or path.suffix in HYGIENE_SKIP_SUFFIXES:
+        if path.name in (".env", "gcp.env") or path.suffix in HYGIENE_SKIP_SUFFIXES:
             continue
         rel = _rel(path)
         try:

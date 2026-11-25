@@ -1,6 +1,6 @@
 # Build context for every `docker build ... .` from the repository root
 # (platform/aurora-steer/Dockerfile, platform/dashboard/Dockerfile,
-# simulations/gcp/Dockerfile.gx-runner).
+# simulations/gcp/Dockerfile.gx-runner, surrogates/itg_surrogate/gke/Dockerfile.tpu).
 # Keep secrets, local state, virtualenvs and build artifacts out of the context and the images.
 
 # VCS, CI and internal review notes
@@ -10,10 +10,12 @@
 .agents
 docs/review
 
-# Secrets and local environment (the template is harmless and kept)
+# Secrets and local environment (templates are harmless and kept)
 .env
 .env.*
 !.env.example
+gcp.env
+**/gcp.env
 **/*.pem
 **/*.key
 **/*credentials*.json
@@ -23,8 +25,9 @@ docs/review
 .venv
 .venv-*
 venv
+env
 **/__pycache__
-**/*.py[cod]
+**/*.py[codz]
 **/*.egg-info
 **/build
 **/dist
@@ -33,6 +36,25 @@ venv
 **/.mypy_cache
 **/.coverage
 **/coverage.xml
+
+# Datasets, checkpoints, and scratch outputs
+**/*.h5
+**/*.hdf5
+**/*.npz
+**/*.orbax
+checkpoints
+outputs
+wandb
+
+# C/C++/Fortran/CUDA build artifacts
+**/*.o
+**/*.so
+**/*.dylib
+**/*.a
+**/*.mod
+CMakeFiles
+CMakeCache.txt
+cmake-build-*
 
 # Runtime state, outboxes and local telemetry databases
 **/state.json*

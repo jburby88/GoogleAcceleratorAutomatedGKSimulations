@@ -2,10 +2,12 @@
 .venv/
 .venv-*/
 venv/
+env/
 __pycache__/
-*.py[cod]
+*.py[codz]
 *$py.class
 *.egg-info/
+.eggs/
 dist/
 build/
 .pytest_cache/
@@ -13,6 +15,7 @@ build/
 .mypy_cache/
 .coverage
 coverage.xml
+htmlcov/
 
 # Secrets & local environment files (NEVER commit)
 .env
@@ -47,8 +50,33 @@ simulations/hpc/queue/needs_human/*
 simulations/hpc/queue/pending/*
 !simulations/hpc/queue/**/.gitkeep
 
+# Datasets, checkpoints, and scratch outputs
+*.h5
+*.hdf5
+*.npz
+*.orbax/
+checkpoints/
+outputs/
+wandb/
+
+# C/C++/Fortran/CUDA build artifacts
+*.o
+*.so
+*.dylib
+*.a
+*.mod
+CMakeFiles/
+CMakeCache.txt
+cmake-build-*/
+
+# GKE / GCP local environment config (keep gcp.env.example tracked)
+gcp.env
+**/gcp.env
+
 # OS / editor / archive artifacts
 .DS_Store
+.vscode/
+.idea/
 *.swp
 *~
 *.zip
@@ -62,4 +90,3 @@ docs/review/
 GEMINI.md
 AGENTS.md
 CLAUDE.md
-

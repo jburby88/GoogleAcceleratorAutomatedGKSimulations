@@ -1,0 +1,26 @@
+# Google Cloud Build configuration for building and pushing `surrogates/itg_surrogate/gke/Dockerfile.tpu`.
+# Invoked from the repository root by `make -C surrogates/itg_surrogate/gke build`.
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-f"
+      - "surrogates/itg_surrogate/gke/Dockerfile.tpu"
+      - "--build-arg"
+      - "JAX_VERSION=${_JAX_VERSION}"
+      - "-t"
+      - "${_IMAGE_URI}:${_IMAGE_TAG}"
+      - "-t"
+      - "${_IMAGE_URI}:latest"
+      - "."
+
+images:
+  - "${_IMAGE_URI}:${_IMAGE_TAG}"
+  - "${_IMAGE_URI}:latest"
+
+substitutions:
+  _JAX_VERSION: "0.11.2"
+  _IMAGE_TAG: "latest"
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: "E2_HIGHCPU_8"
